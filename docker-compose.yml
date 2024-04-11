@@ -1,0 +1,45 @@
+﻿services:
+  
+  postgres:
+    image: postgres
+    container_name: encryption-samples-postgres
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-q", "-d", "${POSTGRES_DB:-encryption-sample}", "-U", "${POSTGRES_USER:-debug}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-encryption-sample}
+      POSTGRES_USER: ${POSTGRES_USER:-debug}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-debug}
+      POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
+    ports:
+      - "5432:5432"
+  
+  localstack:
+    image: localstack/localstack:stable
+    container_name: db-encryption-localstack
+    hostname: localstack
+    healthcheck:
+      test: awslocal kms list-keys
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+    ports:
+      - "4566:4566"
+    environment:
+      SERVICES: kms
+      PERSISTENCE: 1
+      HOSTNAME_EXTERNAL: localstack
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./dev-env/localstack-data:/var/lib/localstack
+      - ./dev-env/init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh
+  
+  
+  entityframeworkcore.encryption.samles.webapi:
+    image: entityframeworkcore.encryption.samles.webapi
+    build:
+      context: .
+      dockerfile: samples/EntityFrameworkCore.Encryption.Samles.WebApi/Dockerfile
