@@ -8,6 +8,7 @@ namespace EntityFrameworkCore.Encryption.Postgres;
 public class PostgresMetadataStorage<TContext>(IDbContextFactory<MetadataContext> factory) : IKeyMetadataStorage<TContext>
 {
     private static readonly string ContextId = typeof(TContext).Name;
+    
     public KeyMetadata? Get()
     {
         using var context = factory.CreateDbContext();

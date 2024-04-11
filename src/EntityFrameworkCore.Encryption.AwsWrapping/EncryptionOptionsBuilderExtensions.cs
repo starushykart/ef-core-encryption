@@ -17,7 +17,7 @@ public static class DbContextEncryptionOptionsBuilderExtensions
             .TryAddAWSService<IAmazonKeyManagementService>()
             .AddOptionsWithValidateOnStart<WrappingOptions>()
             .Configure(configureOptions.Invoke);
-
+        
         builder
             .ConfigureEncryptionProvider(x =>
             {

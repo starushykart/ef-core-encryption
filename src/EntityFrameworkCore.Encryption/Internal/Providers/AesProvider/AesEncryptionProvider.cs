@@ -11,16 +11,14 @@ public class AesEncryptionProvider<TContext>(IKeyProvider<TContext> keyProvider)
     {
         if (input is null || input.Length == 0)
             return null;
-
-        var key = keyProvider.GetDataKey();
-        using var aes = CreateCryptographyProvider(key);
+        
+        using var aes = CreateCryptographyProvider(keyProvider.GetDataKey());
+        
         using var memoryStream = new MemoryStream();
-
         memoryStream.Write(aes.IV);
-
-        using var transform = aes.CreateEncryptor(key, aes.IV);
-        using var cryptoStream = new CryptoStream(memoryStream, transform, CryptoStreamMode.Write);
-
+        
+        using var encryptor = aes.CreateEncryptor(aes.Key, aes.IV);
+        using var cryptoStream = new CryptoStream(memoryStream, encryptor, CryptoStreamMode.Write);
         cryptoStream.Write(input);
         cryptoStream.FlushFinalBlock();
         return memoryStream.ToArray();
@@ -28,18 +26,17 @@ public class AesEncryptionProvider<TContext>(IKeyProvider<TContext> keyProvider)
 
     public byte[]? Decrypt(byte[]? input)
     {
-        if (input is null || input.Length == 0)
+        if (input == null || input.Length == 0)
             return null;
-
-        var key = keyProvider.GetDataKey();
-        using var aes = CreateCryptographyProvider(key);
+        
+        using var aes = CreateCryptographyProvider(keyProvider.GetDataKey());
         using var memoryStream = new MemoryStream();
         
         var ivSize = aes.BlockSize / 8;
         var iv = input[..ivSize];
         var data = input[ivSize..];
-
-        using var transform = aes.CreateDecryptor(key, iv);
+        
+        using var transform = aes.CreateDecryptor(aes.Key, iv);
         using var cryptoStream = new CryptoStream(memoryStream, transform, CryptoStreamMode.Write);
         
         cryptoStream.Write(data);

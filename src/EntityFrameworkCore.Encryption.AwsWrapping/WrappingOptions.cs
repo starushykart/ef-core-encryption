@@ -8,4 +8,6 @@ public class WrappingOptions
     public string WrappingKeyArn { get; set; } = null!;
     public TimeSpan DataKeyCacheExpiration { get; set; }
     public bool GenerateDataKeyIfNotExist { get; set; }
+    
+    public TimeSpan RotationPeriod { get; set; }
 }

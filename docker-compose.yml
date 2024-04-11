@@ -37,7 +37,6 @@
       - ./dev-env/localstack-data:/var/lib/localstack
       - ./dev-env/init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh
   
-  
   entityframeworkcore.encryption.samles.webapi:
     image: entityframeworkcore.encryption.samles.webapi
     build:

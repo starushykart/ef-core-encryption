@@ -18,17 +18,13 @@ internal class AwsWrappingAesDataKeyProvider<TContext>(
     private static readonly string ContextId = typeof(TContext).Name;
 
     public byte[] GetDataKey()
-    {
-        var result = memoryCache.GetOrCreate(
+        => memoryCache.GetOrCreate(
             ContextId,
             cacheEntry =>
             {
                 cacheEntry.SetAbsoluteExpiration(options.Value.DataKeyCacheExpiration);
                 return GetKeyInternal();
             }) ?? throw new EntityFrameworkEncryptionException("Data key cannot be null");
-
-        return result;
-    }
 
     private byte[]? GetKeyInternal()
     {

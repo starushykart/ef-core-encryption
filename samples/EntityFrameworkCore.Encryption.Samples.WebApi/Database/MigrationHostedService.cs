@@ -9,7 +9,7 @@ public class MigrationHostedService(IDbContextFactory<MetadataContext> metadataC
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var appContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        await appContext.Database.EnsureCreatedAsync(cancellationToken);
+        await appContext.Database.MigrateAsync(cancellationToken);
         
         await using var context = await metadataContextFactory.CreateDbContextAsync(cancellationToken);
         await context.Database.MigrateAsync(cancellationToken);
