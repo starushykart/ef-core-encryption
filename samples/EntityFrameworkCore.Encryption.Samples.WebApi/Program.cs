@@ -1,7 +1,6 @@
 using Amazon.KeyManagementService;
-using EntityFrameworkCore.Encryption;
-using EntityFrameworkCore.Encryption.AwsWrapping;
-using EntityFrameworkCore.Encryption.Postgres;
+using EntityFrameworkCore.Encryption.Postgres.AwsWrapping;
+using EntityFrameworkCore.Encryption.Postgres.AwsWrapping.Common;
 using EntityFrameworkCore.Encryption.Samples.WebApi.Database;
 using EntityFrameworkCore.Encryption.Samples.WebApi.Models;
 using Microsoft.EntityFrameworkCore;
@@ -19,17 +18,22 @@ builder.Services.AddSingleton<IAmazonKeyManagementService>(new AmazonKeyManageme
         ServiceURL = "http://localhost:4566"
     }));
 
+// first configuration approach
+// builder.Services.AddAwsAesDataKeyWrapping(
+//     builder.Configuration.GetValue<string>("Database:ConnectionString")!,
+//     x => x.WithKeyArn(builder.Configuration.GetValue<string>("Database:WrappingKeyId")));
+//
+// builder.Services.AddDbContext<ApplicationDbContext>(
+//     x => x
+//         .UseNpgsql(builder.Configuration.GetValue<string>("Database:ConnectionString"))
+//         .UseAes256Encryption());
+
+// second configuration approach
 builder.Services.AddDbContext<ApplicationDbContext>(
     x => x
-        .UseNpgsql(builder.Configuration.GetValue<string>("Database:ConnectionString")),
-    opt =>
-        opt.UseCurrentDatabaseStorage()
-            .UseAesWithAwsWrapping(o =>
-            {
-                o.WrappingKeyArn = builder.Configuration.GetValue<string>("Database:WrappingKeyId")!;
-                o.GenerateDataKeyIfNotExist = true;
-                o.DataKeyCacheExpiration = builder.Configuration.GetValue<TimeSpan>("Database:DataKeyCacheExpiration");
-            }));
+        .UseNpgsql(builder.Configuration.GetValue<string>("Database:ConnectionString"))
+        .UseAes256Encryption(),
+    x=> x.WithKeyArn(builder.Configuration.GetValue<string>("Database:WrappingKeyId")));
 
 var app = builder.Build();
 

@@ -1,7 +1,6 @@
 using System.Text;
 using Bogus;
 using EntityFrameworkCore.Encryption.Internal.Providers;
-using EntityFrameworkCore.Encryption.Internal.Providers.AesProvider;
 using FluentAssertions;
 using Xunit;
 

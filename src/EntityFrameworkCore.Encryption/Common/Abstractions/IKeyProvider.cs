@@ -1,9 +1,7 @@
-using Microsoft.EntityFrameworkCore;
-
 namespace EntityFrameworkCore.Encryption.Common.Abstractions;
 
-public interface IKeyProvider<TContext>
-    where TContext : DbContext
+public interface IKeyProvider
 {
     byte[] GetDataKey();
 }
+

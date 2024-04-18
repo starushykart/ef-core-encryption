@@ -12,7 +12,7 @@ internal class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<Applicat
             .Options;
         
         var context = new ApplicationDbContext(options);
-        context.IsDesignTime(true);
+        //context.IsDesignTime(true);
         
         return context;
     }

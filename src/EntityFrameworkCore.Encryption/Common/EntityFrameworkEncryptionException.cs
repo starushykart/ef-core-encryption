@@ -1,4 +1,4 @@
-namespace EntityFrameworkCore.Encryption.Common.Exceptions;
+namespace EntityFrameworkCore.Encryption.Common;
 
 public class EntityFrameworkEncryptionException(string message)
     : Exception(message);

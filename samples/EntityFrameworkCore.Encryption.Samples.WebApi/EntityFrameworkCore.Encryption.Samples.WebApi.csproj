@@ -25,8 +25,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\..\src\EntityFrameworkCore.Encryption.AwsWrapping\EntityFrameworkCore.Encryption.AwsWrapping.csproj" />
-      <ProjectReference Include="..\..\src\EntityFrameworkCore.Encryption.Postgres\EntityFrameworkCore.Encryption.Postgres.csproj" />
+      <ProjectReference Include="..\..\src\EntityFrameworkCore.Encryption.Postgres.AwsWrapping\EntityFrameworkCore.Encryption.Postgres.AwsWrapping.csproj" />
     </ItemGroup>
 
 </Project>

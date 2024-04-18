@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace EntityFrameworkCore.Encryption.Samples.WebApi.Database;
 
-public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : EncryptedDbContext(options)
+public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : DbContext(options)
 {
     public DbSet<Password> Passwords => Set<Password>();
 

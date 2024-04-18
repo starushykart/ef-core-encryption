@@ -11,13 +11,11 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "samples", "samples", "{501B
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EntityFrameworkCore.Encryption.Samples.WebApi", "samples\EntityFrameworkCore.Encryption.Samples.WebApi\EntityFrameworkCore.Encryption.Samples.WebApi.csproj", "{591FA92C-27BB-45BE-BF41-CAE61BB2324A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EntityFrameworkCore.Encryption.AwsWrapping", "src\EntityFrameworkCore.Encryption.AwsWrapping\EntityFrameworkCore.Encryption.AwsWrapping.csproj", "{685BD733-9C28-4505-8D9C-1F7D983398EA}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EntityFrameworkCore.Encryption.Postgres.AwsWrapping", "src\EntityFrameworkCore.Encryption.Postgres.AwsWrapping\EntityFrameworkCore.Encryption.Postgres.AwsWrapping.csproj", "{685BD733-9C28-4505-8D9C-1F7D983398EA}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EntityFrameworkCore.Encryption.Tests", "tests\EntityFrameworkCore.Encryption.Tests\EntityFrameworkCore.Encryption.Tests.csproj", "{B67F1916-1803-416D-AD6A-575B937A866C}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{7E4B3D42-7D8E-4103-A343-F7861BC78F2E}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EntityFrameworkCore.Encryption.Postgres", "src\EntityFrameworkCore.Encryption.Postgres\EntityFrameworkCore.Encryption.Postgres.csproj", "{035350E0-0A7C-47CC-94EB-A24CDE4232F0}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -29,7 +27,6 @@ Global
 		{591FA92C-27BB-45BE-BF41-CAE61BB2324A} = {501BA5E6-27D2-4C46-995D-14687DBC608B}
 		{685BD733-9C28-4505-8D9C-1F7D983398EA} = {F9ECB9FE-4C6E-4AD7-97BF-7BD5A6923A8D}
 		{B67F1916-1803-416D-AD6A-575B937A866C} = {7E4B3D42-7D8E-4103-A343-F7861BC78F2E}
-		{035350E0-0A7C-47CC-94EB-A24CDE4232F0} = {F9ECB9FE-4C6E-4AD7-97BF-7BD5A6923A8D}
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{BE9947D0-1230-48DE-9960-A956A203EBC2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
@@ -48,9 +45,5 @@ Global
 		{B67F1916-1803-416D-AD6A-575B937A866C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B67F1916-1803-416D-AD6A-575B937A866C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B67F1916-1803-416D-AD6A-575B937A866C}.Release|Any CPU.Build.0 = Release|Any CPU
-		{035350E0-0A7C-47CC-94EB-A24CDE4232F0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{035350E0-0A7C-47CC-94EB-A24CDE4232F0}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{035350E0-0A7C-47CC-94EB-A24CDE4232F0}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{035350E0-0A7C-47CC-94EB-A24CDE4232F0}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

@@ -1,5 +1,3 @@
-using Microsoft.EntityFrameworkCore;
-
 namespace EntityFrameworkCore.Encryption.Common.Abstractions;
 
 public interface IEncryptionProvider
@@ -8,6 +6,3 @@ public interface IEncryptionProvider
 
     byte[]? Decrypt(byte[]? input);
 }
-
-public interface IEncryptionProvider<TContext> : IEncryptionProvider
-    where TContext : DbContext;

@@ -1,21 +1,21 @@
 using System.Reflection;
+using EntityFrameworkCore.Encryption.Common;
 using EntityFrameworkCore.Encryption.Common.Abstractions;
-using EntityFrameworkCore.Encryption.Common.Exceptions;
-using EntityFrameworkCore.Encryption.Internal.ModelConfigurationExtensions;
-using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using Microsoft.EntityFrameworkCore.Metadata.Conventions;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 
-namespace EntityFrameworkCore.Encryption.Internal;
+namespace EntityFrameworkCore.Encryption.Internal.ModelConfigurationExtensions;
 
-public class EncryptionConvention(IEncryptionProvider encryptionProvider) : IModelFinalizingConvention
+internal sealed class EncryptionModelCustomizer(ModelCustomizerDependencies dependencies, IEncryptionProvider provider) 
+    : ModelCustomizer(dependencies)
 {
-    public void ProcessModelFinalizing(
-        IConventionModelBuilder modelBuilder,
-        IConventionContext<IConventionModelBuilder> context)
+    public override void Customize(ModelBuilder modelBuilder, DbContext context)
     {
-        var converter = new EncryptionConverter(encryptionProvider);
+        base.Customize(modelBuilder, context);
         
-        foreach (var entityType in modelBuilder.Metadata.GetEntityTypes())
+        var converter = new EncryptionConverter(provider);
+        
+        foreach (var entityType in modelBuilder.Model.GetEntityTypes())
         {
             var encryptedProperties = entityType.GetProperties()
                 .Where(x =>
@@ -27,12 +27,12 @@ public class EncryptionConvention(IEncryptionProvider encryptionProvider) : IMod
 
                     return x.PropertyInfo?.GetCustomAttribute<EncryptedAttribute>(false) != null;
                 });
-            
+
             foreach (var property in encryptedProperties)
             {
                 if (property.ClrType != typeof(string))
                     throw new EntityFrameworkEncryptionException("Encryption could be applied only for string types");
-                
+               
                 property.SetValueConverter(converter);
             }
         }
