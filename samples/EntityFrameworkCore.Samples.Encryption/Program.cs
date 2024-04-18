@@ -1,8 +1,8 @@
 using Amazon.KeyManagementService;
 using EntityFrameworkCore.Encryption.Postgres.AwsWrapping;
 using EntityFrameworkCore.Encryption.Postgres.AwsWrapping.Common;
-using EntityFrameworkCore.Encryption.Samples.WebApi.Database;
-using EntityFrameworkCore.Encryption.Samples.WebApi.Models;
+using EntityFrameworkCore.Samples.Encryption.Database;
+using EntityFrameworkCore.Samples.Encryption.Models;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);

@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 
-namespace EntityFrameworkCore.Encryption.Samples.WebApi.Database;
+namespace EntityFrameworkCore.Samples.Encryption.Database;
 
 internal class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<ApplicationDbContext>
 {

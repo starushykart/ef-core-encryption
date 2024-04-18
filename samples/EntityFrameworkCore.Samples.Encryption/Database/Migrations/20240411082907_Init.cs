@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace EntityFrameworkCore.Encryption.Samples.WebApi.Database.Migrations
+namespace EntityFrameworkCore.Samples.Encryption.Database.Migrations
 {
     /// <inheritdoc />
     public partial class Init : Migration

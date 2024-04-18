@@ -1,8 +1,8 @@
 using EntityFrameworkCore.Encryption.Internal.ModelConfigurationExtensions;
-using EntityFrameworkCore.Encryption.Samples.WebApi.Models;
+using EntityFrameworkCore.Samples.Encryption.Models;
 using Microsoft.EntityFrameworkCore;
 
-namespace EntityFrameworkCore.Encryption.Samples.WebApi.Database;
+namespace EntityFrameworkCore.Samples.Encryption.Database;
 
 public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : DbContext(options)
 {

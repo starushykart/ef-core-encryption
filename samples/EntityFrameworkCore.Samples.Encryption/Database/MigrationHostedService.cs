@@ -1,7 +1,7 @@
 using EntityFrameworkCore.Encryption.Postgres.AwsWrapping.Database;
 using Microsoft.EntityFrameworkCore;
 
-namespace EntityFrameworkCore.Encryption.Samples.WebApi.Database;
+namespace EntityFrameworkCore.Samples.Encryption.Database;
 
 public class MigrationHostedService(IServiceScopeFactory scopeFactory) : IHostedService
 {

@@ -1,6 +1,6 @@
 using EntityFrameworkCore.Encryption.Internal.ModelConfigurationExtensions;
 
-namespace EntityFrameworkCore.Encryption.Samples.WebApi.Models;
+namespace EntityFrameworkCore.Samples.Encryption.Models;
 
 public class Password
 {

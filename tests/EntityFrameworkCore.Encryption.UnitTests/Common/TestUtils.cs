@@ -1,6 +1,6 @@
 using System.Security.Cryptography;
 
-namespace EntityFrameworkCore.Encryption.Tests;
+namespace EntityFrameworkCore.Encryption.UnitTests.Common;
 
 public static class TestUtils
 {
