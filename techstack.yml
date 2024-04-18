@@ -1,0 +1,20 @@
+repo_name: starushykart/ef-core-encryption
+report_id: 6215e33e11135ba3eaae6634b099b1cf
+version: 0.1
+repo_type: Public
+timestamp: '2024-04-18T17:55:30+00:00'
+requested_by: starushykart
+provider: github
+branch: main
+detected_tools_count: 1
+tools:
+- name: Git
+  description: Fast, scalable, distributed revision control system
+  website_url: http://git-scm.com/
+  open_source: true
+  hosted_saas: false
+  category: Build, Test, Deploy
+  sub_category: Version Control System
+  image_url: https://img.stackshare.io/service/1046/git.png
+  detection_source_url: https://github.com/starushykart/ef-core-encryption
+  detection_source: Repo Metadata
