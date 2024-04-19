@@ -5,5 +5,5 @@ namespace EntityFrameworkCore.Encryption.Postgres.AwsWrapping.Internal;
 public class InMemoryKeyProvider(string contextId) : IKeyProvider
 {
     public byte[] GetDataKey()
-        => InMemoryKeyStorage.Specifications[contextId].Key;
+        => InMemoryKeyStorage.GetKey(contextId);
 }

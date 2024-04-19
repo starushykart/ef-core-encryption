@@ -5,8 +5,14 @@ namespace EntityFrameworkCore.Encryption.Postgres.AwsWrapping.Internal;
 
 internal static class InMemoryKeyStorage
 {
-    public static readonly ConcurrentDictionary<string, EncryptionSpecification> Specifications = [];
-
+    private static readonly ConcurrentDictionary<string, EncryptionSpecification> Specifications = [];
+    
+    internal static IReadOnlyDictionary<string, EncryptionSpecification> GetRegisteredSpecifications()
+        => Specifications;
+    
+    internal static byte[] GetKey(string contextName)
+        => Specifications[contextName].Key;
+    
     internal static void Register(string contextName, EncryptionType spec)
     {
         if (contextName.Equals(nameof(DbContext)) || Specifications.ContainsKey(contextName))

@@ -49,17 +49,17 @@ internal class AwsKeyWrappingHostedService(
 
     private async Task InitializeInMemoryKeyStorageAsync(CancellationToken ct)
     {
-        foreach (var specification in InMemoryKeyStorage.Specifications)
+        foreach (var (contextName, specification) in InMemoryKeyStorage.GetRegisteredSpecifications())
         {
             await using var context = await dbContextFactory.CreateDbContextAsync(ct);
             
             var metadata = await context.Metadata
-                .FirstOrDefaultAsync(x => x.ContextId == specification.Key, ct);
+                .FirstOrDefaultAsync(x => x.ContextId == contextName, ct);
 
             if (metadata == null && !options.Value.GenerateDataKeyIfNotExist)
             {
                 throw new EntityFrameworkEncryptionException(
-                    $"Data encryption key for {specification.Key} not found");
+                    $"Data encryption key for {contextName} not found");
             }
 
             byte[] dataKey;
@@ -81,18 +81,18 @@ internal class AwsKeyWrappingHostedService(
             else
             {
                 var (encrypted, decrypted) =
-                    await GenerateDataKeyAsync(specification.Value.Type, ct);
+                    await GenerateDataKeyAsync(specification.Type, ct);
 
                 dataKey = decrypted;
 
-                context.Metadata.Add(EncryptionMetadata.Create(specification.Key, encrypted));
+                context.Metadata.Add(EncryptionMetadata.Create(contextName, encrypted));
 
                 await context.SaveChangesAsync(ct);
             }
 
-            specification.Value.SetKey(dataKey);
+            specification.SetKey(dataKey);
             
-            logger.LogInformation("Data encryption key for context {ContextType} initialized", specification.Key);
+            logger.LogInformation("Data encryption key for context {ContextType} initialized", contextName);
         }
     }
 
