@@ -17,7 +17,7 @@ internal sealed class EncryptionDbContextOptionsExtension : IDbContextOptionsExt
         _provider = copyFrom._provider;
     }
     
-    public IEncryptionProvider Provider => _provider ?? throw new InvalidOperationException();
+    public IEncryptionProvider Provider => _provider ?? throw new InvalidOperationException("Encryption provider not set");
     public DbContextOptionsExtensionInfo Info => _info ??= new EncryptionExtensionInfo(this);
     
     private EncryptionDbContextOptionsExtension Clone() => new(this);
