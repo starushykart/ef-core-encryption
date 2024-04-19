@@ -1,6 +1,0 @@
-@EntityFrameworkCore.Encryption.Samples.WebApi_HostAddress = http://localhost:5052
-
-GET {{EntityFrameworkCore.Encryption.Samples.WebApi_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###

@@ -1,3 +1,4 @@
+using System.Data.Common;
 using Amazon.KeyManagementService;
 using Amazon.KeyManagementService.Model;
 using EntityFrameworkCore.Encryption.Common;
@@ -7,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Npgsql;
 
 namespace EntityFrameworkCore.Encryption.Postgres.AwsWrapping.Internal;
 
@@ -18,59 +20,82 @@ internal class AwsKeyWrappingHostedService(
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        try
+        var counter = 0;
+        
+        while (!cancellationToken.IsCancellationRequested && counter < options.Value.MaxInitializationRetryCount)
         {
-            await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+            counter += 1;
 
-            foreach (var specification in InMemoryKeyStorage.Specifications)
+            try
             {
-                var metadata = await context.Metadata
-                    .FirstOrDefaultAsync(x => x.ContextId == specification.Key, cancellationToken);
-
-                if (metadata == null && !options.Value.GenerateDataKeyIfNotExist)
-                {
-                    throw new EntityFrameworkEncryptionException(
-                        $"Data encryption key for {specification.Key} not found");
-                }
-
-                byte[] dataKey;
-
-                if (metadata != null)
-                {
-                    dataKey = await DecryptAsync(metadata.Key, cancellationToken);
-                    var reEncryptedDataKey = await EncryptAsync(dataKey, cancellationToken);
-
-                    await VerifyAsync(dataKey, reEncryptedDataKey, cancellationToken);
-
-                    metadata.Update(reEncryptedDataKey);
-                    await context.SaveChangesAsync(cancellationToken);
-                }
-                else
-                {
-                    var (encrypted, decrypted) =
-                        await GenerateDataKeyAsync(specification.Value.Type, cancellationToken);
-
-                    dataKey = decrypted;
-
-                    context.Metadata.Add(EncryptionMetadata.Create(specification.Key, encrypted));
-
-                    await context.SaveChangesAsync(cancellationToken);
-                }
-
-                specification.Value.SetKey(dataKey);
-                logger.LogInformation("Data encryption key for context {ContextType} initialized", specification.Key);
+                await InitializeInMemoryKeyStorageAsync(cancellationToken);
+                return;
             }
+            catch (DbUpdateException ex) when (ex.InnerException is DbException { SqlState: PostgresErrorCodes.UniqueViolation })
+            {
+                // simultaneous creation may rarely occur when multiple instances of the same service
+                // trying to created data key for the very first time if it is not exists
+                // should be ignored and retried
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
         }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Unexpected error occured during database encryption initialization");
-            throw;
-        }
+
+        throw new EntityFrameworkEncryptionException("Encryption key storage cannot be initialized");
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
         => Task.CompletedTask;
-    
+
+    private async Task InitializeInMemoryKeyStorageAsync(CancellationToken ct)
+    {
+        foreach (var specification in InMemoryKeyStorage.Specifications)
+        {
+            await using var context = await dbContextFactory.CreateDbContextAsync(ct);
+            
+            var metadata = await context.Metadata
+                .FirstOrDefaultAsync(x => x.ContextId == specification.Key, ct);
+
+            if (metadata == null && !options.Value.GenerateDataKeyIfNotExist)
+            {
+                throw new EntityFrameworkEncryptionException(
+                    $"Data encryption key for {specification.Key} not found");
+            }
+
+            byte[] dataKey;
+
+            if (metadata != null)
+            {
+                dataKey = await DecryptAsync(metadata.Key, ct);
+
+                if (options.Value.ReEncryptDataKeyOnStart)
+                {
+                    var reEncryptedDataKey = await EncryptAsync(dataKey, ct);
+
+                    await VerifyAsync(dataKey, reEncryptedDataKey, ct);
+
+                    metadata.Update(reEncryptedDataKey);
+                    await context.SaveChangesAsync(ct);
+                }
+            }
+            else
+            {
+                var (encrypted, decrypted) =
+                    await GenerateDataKeyAsync(specification.Value.Type, ct);
+
+                dataKey = decrypted;
+
+                context.Metadata.Add(EncryptionMetadata.Create(specification.Key, encrypted));
+
+                await context.SaveChangesAsync(ct);
+            }
+
+            specification.Value.SetKey(dataKey);
+            
+            logger.LogInformation("Data encryption key for context {ContextType} initialized", specification.Key);
+        }
+    }
+
     private async Task VerifyAsync(byte[] decryptedKey, byte[] reEncryptedDataKey, CancellationToken ct)
     {
         var verificationDecryptedKey = await DecryptAsync(reEncryptedDataKey, ct);

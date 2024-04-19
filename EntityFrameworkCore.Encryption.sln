@@ -9,7 +9,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "samples", "samples", "{501B
 		docker-compose.yml = docker-compose.yml
 	EndProjectSection
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EntityFrameworkCore.Samples.Encryption", "samples\EntityFrameworkCore.Samples.Encryption\EntityFrameworkCore.Samples.Encryption.csproj", "{591FA92C-27BB-45BE-BF41-CAE61BB2324A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EntityFrameworkCore.Samples.Encryption.AesWrapping", "samples\EntityFrameworkCore.Samples.Encryption.AesWrapping\EntityFrameworkCore.Samples.Encryption.AesWrapping.csproj", "{591FA92C-27BB-45BE-BF41-CAE61BB2324A}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EntityFrameworkCore.Encryption.Postgres.AwsWrapping", "src\EntityFrameworkCore.Encryption.Postgres.AwsWrapping\EntityFrameworkCore.Encryption.Postgres.AwsWrapping.csproj", "{685BD733-9C28-4505-8D9C-1F7D983398EA}"
 EndProject
@@ -18,6 +18,8 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{7E4B3D42-7D8E-4103-A343-F7861BC78F2E}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EnctityFrameworkCore.Encryption.IntegrationTests", "tests\EnctityFrameworkCore.Encryption.IntegrationTests\EnctityFrameworkCore.Encryption.IntegrationTests.csproj", "{443A83BF-55A2-4259-84E7-6E0DAA1B00FE}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EntityFrameworkCore.Samples.Encryption.Aes", "samples\EntityFrameworkCore.Samples.Encryption.Aes\EntityFrameworkCore.Samples.Encryption.Aes.csproj", "{E9D85F8C-FBF1-4805-9433-6ACD814DD91E}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -30,6 +32,7 @@ Global
 		{685BD733-9C28-4505-8D9C-1F7D983398EA} = {F9ECB9FE-4C6E-4AD7-97BF-7BD5A6923A8D}
 		{B67F1916-1803-416D-AD6A-575B937A866C} = {7E4B3D42-7D8E-4103-A343-F7861BC78F2E}
 		{443A83BF-55A2-4259-84E7-6E0DAA1B00FE} = {7E4B3D42-7D8E-4103-A343-F7861BC78F2E}
+		{E9D85F8C-FBF1-4805-9433-6ACD814DD91E} = {501BA5E6-27D2-4C46-995D-14687DBC608B}
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{BE9947D0-1230-48DE-9960-A956A203EBC2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
@@ -52,5 +55,9 @@ Global
 		{443A83BF-55A2-4259-84E7-6E0DAA1B00FE}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{443A83BF-55A2-4259-84E7-6E0DAA1B00FE}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{443A83BF-55A2-4259-84E7-6E0DAA1B00FE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E9D85F8C-FBF1-4805-9433-6ACD814DD91E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E9D85F8C-FBF1-4805-9433-6ACD814DD91E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E9D85F8C-FBF1-4805-9433-6ACD814DD91E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E9D85F8C-FBF1-4805-9433-6ACD814DD91E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

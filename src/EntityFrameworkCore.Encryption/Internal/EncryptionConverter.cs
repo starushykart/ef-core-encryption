@@ -13,7 +13,7 @@ internal sealed class EncryptionConverter(IEncryptionProvider encryptionProvider
     private static string? Encrypt(string? input, IEncryptionProvider encryptionProvider)
     {
         if (input == null)
-            return default!;
+            return default;
 
         var inputData = Encoding.UTF8.GetBytes(input);
         var encryptedRawBytes = encryptionProvider.Encrypt(inputData);
@@ -26,7 +26,7 @@ internal sealed class EncryptionConverter(IEncryptionProvider encryptionProvider
     private static string? Decrypt(string? input, IEncryptionProvider encryptionProvider)
     {
         if (input == null)
-            return default!;
+            return default;
 
         var inputData = Convert.FromBase64String(input);
         var decryptedBytes = encryptionProvider.Decrypt(inputData);

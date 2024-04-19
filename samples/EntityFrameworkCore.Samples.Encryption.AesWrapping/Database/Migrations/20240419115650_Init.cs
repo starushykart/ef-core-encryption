@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace EntityFrameworkCore.Samples.Encryption.Database.Migrations
+namespace EntityFrameworkCore.Samples.Encryption.AesWrapping.Database.Migrations
 {
     /// <inheritdoc />
     public partial class Init : Migration
@@ -15,7 +15,7 @@ namespace EntityFrameworkCore.Samples.Encryption.Database.Migrations
                 name: "public");
 
             migrationBuilder.CreateTable(
-                name: "Passwords",
+                name: "EncryptedWrappedPasswords",
                 schema: "public",
                 columns: table => new
                 {
@@ -26,7 +26,7 @@ namespace EntityFrameworkCore.Samples.Encryption.Database.Migrations
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_Passwords", x => x.Id);
+                    table.PrimaryKey("PK_EncryptedWrappedPasswords", x => x.Id);
                 });
         }
 
@@ -34,7 +34,7 @@ namespace EntityFrameworkCore.Samples.Encryption.Database.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropTable(
-                name: "Passwords",
+                name: "EncryptedWrappedPasswords",
                 schema: "public");
         }
     }

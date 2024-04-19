@@ -1,21 +1,19 @@
 using System.Reflection;
 using EntityFrameworkCore.Encryption.Common;
 using EntityFrameworkCore.Encryption.Common.Abstractions;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
+using EntityFrameworkCore.Encryption.Internal.ModelExtensions;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Microsoft.EntityFrameworkCore.Metadata.Conventions;
 
-namespace EntityFrameworkCore.Encryption.Internal.ModelConfigurationExtensions;
+namespace EntityFrameworkCore.Encryption.Internal;
 
-internal sealed class EncryptionModelCustomizer(ModelCustomizerDependencies dependencies, IEncryptionProvider provider) 
-    : ModelCustomizer(dependencies)
+public class EncryptionConvention(IEncryptionProvider provider) : IModelFinalizingConvention
 {
-    public override void Customize(ModelBuilder modelBuilder, DbContext context)
+    public void ProcessModelFinalizing(IConventionModelBuilder modelBuilder, IConventionContext<IConventionModelBuilder> context)
     {
-        base.Customize(modelBuilder, context);
-        
         var converter = new EncryptionConverter(provider);
         
-        foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+        foreach (var entityType in modelBuilder.Metadata.GetEntityTypes())
         {
             var encryptedProperties = entityType.GetProperties()
                 .Where(x =>

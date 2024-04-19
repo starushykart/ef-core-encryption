@@ -12,13 +12,13 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddAwsAesDataKeyWrapping(
         this IServiceCollection services,
         string connectionString,
-        Action<WrappingOptions> configureOptions)
+        Action<WrappingOptions> awsWrappingOptionsAction)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
         
         services
             .AddOptionsWithValidateOnStart<WrappingOptions>()
-            .Configure(configureOptions.Invoke);
+            .Configure(awsWrappingOptionsAction.Invoke);
 
         services.TryAddAWSService<IAmazonKeyManagementService>();
         services.AddHostedService<AwsKeyWrappingHostedService>();
@@ -29,12 +29,12 @@ public static class ServiceCollectionExtensions
 
     public static IServiceCollection AddDbContext<TContext>(this IServiceCollection services,
         Action<DbContextOptionsBuilder> optionsAction,
-        Action<WrappingOptions> wrappingOptionsAction,
+        Action<WrappingOptions> awsWrappingOptionsAction,
         ServiceLifetime contextLifetime = ServiceLifetime.Scoped,
         ServiceLifetime optionsLifetime = ServiceLifetime.Scoped)
         where TContext : DbContext
     {
-        services.AddAwsAesDataKeyWrapping(Utils.GetConnectionString(optionsAction), wrappingOptionsAction);
+        services.AddAwsAesDataKeyWrapping(Utils.GetConnectionString(optionsAction), awsWrappingOptionsAction);
         services.AddDbContext<TContext>(optionsAction, contextLifetime, optionsLifetime);
 
         return services;
@@ -42,11 +42,11 @@ public static class ServiceCollectionExtensions
     
     public static IServiceCollection AddDbContextFactory<TContext>(this IServiceCollection services,
         Action<DbContextOptionsBuilder> optionsAction,
-        Action<WrappingOptions> wrappingOptionsAction,
+        Action<WrappingOptions> awsWrappingOptionsAction,
         ServiceLifetime lifetime = ServiceLifetime.Singleton)
         where TContext : DbContext
     {
-        services.AddAwsAesDataKeyWrapping(Utils.GetConnectionString(optionsAction), wrappingOptionsAction);
+        services.AddAwsAesDataKeyWrapping(Utils.GetConnectionString(optionsAction), awsWrappingOptionsAction);
         services.AddDbContextFactory<TContext>(optionsAction, lifetime);
 
         return services;

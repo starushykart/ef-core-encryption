@@ -1,10 +1,11 @@
+using System.Diagnostics.CodeAnalysis;
 using EntityFrameworkCore.Encryption.Common;
-using EntityFrameworkCore.Encryption.Postgres.AwsWrapping.Database;
 using Microsoft.EntityFrameworkCore;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Infrastructure.Internal;
 
 namespace EntityFrameworkCore.Encryption.Postgres.AwsWrapping.Common;
 
+[SuppressMessage("Usage", "EF1001:Internal EF Core API usage.")]
 internal static class Utils
 {
     internal static string GetConnectionString(Action<DbContextOptionsBuilder> sourceOptionsAction)
