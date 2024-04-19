@@ -1,8 +1,8 @@
-using EntityFrameworkCore.Encryption.Internal.ModelConfigurationExtensions;
+using EntityFrameworkCore.Encryption.Internal.ModelExtensions;
 
-namespace EntityFrameworkCore.Samples.Encryption.Models;
+namespace EntityFrameworkCore.Samples.Encryption.AesWrapping.Database;
 
-public class Password
+public class PasswordWithEncryptionWrapping
 {
     public Guid Id { get; set; }
     
