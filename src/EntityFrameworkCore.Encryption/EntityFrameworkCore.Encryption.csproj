@@ -7,12 +7,12 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.2" />
+      <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.4" />
     </ItemGroup>
 
     <ItemGroup>
         <InternalsVisibleTo Include="EntityFrameworkCore.Encryption.Postgres.AwsWrapping" />
-        <InternalsVisibleTo Include="EntityFrameworkCore.Encryption.Tests" />
+        <InternalsVisibleTo Include="EntityFrameworkCore.Encryption.UnitTests" />
     </ItemGroup>
 
 </Project>

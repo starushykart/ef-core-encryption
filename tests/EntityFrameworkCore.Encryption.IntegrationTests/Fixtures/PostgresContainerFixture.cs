@@ -1,6 +1,6 @@
 using Testcontainers.PostgreSql;
 
-namespace EnctityFrameworkCore.Encryption.IntegrationTests.Fixtures;
+namespace EntityFrameworkCore.Encryption.IntegrationTests.Fixtures;
 
 public class PostgresContainerFixture : IAsyncLifetime
 {

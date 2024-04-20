@@ -34,6 +34,7 @@ if (true)
             .UseAes256Encryption());
 }
 else
+#pragma warning disable CS0162 // Unreachable code detected
 {
     // 2 approach
     builder.Services.AddDbContext<EncryptedWrappedDbContext>(
@@ -42,6 +43,7 @@ else
             .UseAes256Encryption(),
         x=> x.WithKeyArn(builder.Configuration.GetValue<string>("Database:WrappingKeyId")));
 }
+#pragma warning restore CS0162 // Unreachable code detected
 
 
 var app = builder.Build();
