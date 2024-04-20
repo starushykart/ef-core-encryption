@@ -17,7 +17,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EntityFrameworkCore.Encrypt
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{7E4B3D42-7D8E-4103-A343-F7861BC78F2E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EnctityFrameworkCore.Encryption.IntegrationTests", "tests\EnctityFrameworkCore.Encryption.IntegrationTests\EnctityFrameworkCore.Encryption.IntegrationTests.csproj", "{443A83BF-55A2-4259-84E7-6E0DAA1B00FE}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EntityFrameworkCore.Encryption.IntegrationTests", "tests\EntityFrameworkCore.Encryption.IntegrationTests\EntityFrameworkCore.Encryption.IntegrationTests.csproj", "{443A83BF-55A2-4259-84E7-6E0DAA1B00FE}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EntityFrameworkCore.Samples.Encryption.Aes", "samples\EntityFrameworkCore.Samples.Encryption.Aes\EntityFrameworkCore.Samples.Encryption.Aes.csproj", "{E9D85F8C-FBF1-4805-9433-6ACD814DD91E}"
 EndProject

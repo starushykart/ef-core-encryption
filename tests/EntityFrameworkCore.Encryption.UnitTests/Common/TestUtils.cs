@@ -4,7 +4,7 @@ namespace EntityFrameworkCore.Encryption.UnitTests.Common;
 
 public static class TestUtils
 {
-    public static string GenerateAesKey()
+    public static string GenerateAesKeyBase64()
     {
         using var aes = Aes.Create();
         aes.GenerateKey();

@@ -14,7 +14,7 @@ public class AesEncryptionProviderTests
     [Fact]
     public void Should_encrypt_and_decrypt_successfully()
     {   
-        var keyProvider = new ConstantKeyProvider(TestUtils.GenerateAesKey());
+        var keyProvider = new ConstantKeyProvider(TestUtils.GenerateAesKeyBase64());
         var provider = new AesEncryptionProvider(keyProvider);
 
         var stringToEncrypt = _faker.Lorem.Sentence();
