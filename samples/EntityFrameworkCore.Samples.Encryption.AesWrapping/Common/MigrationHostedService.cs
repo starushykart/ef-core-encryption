@@ -1,7 +1,8 @@
 using EntityFrameworkCore.Encryption.Postgres.AwsWrapping.Database;
+using EntityFrameworkCore.Samples.Encryption.AesWrapping.Database;
 using Microsoft.EntityFrameworkCore;
 
-namespace EntityFrameworkCore.Samples.Encryption.AesWrapping.Database;
+namespace EntityFrameworkCore.Samples.Encryption.AesWrapping.Common;
 
 public class MigrationHostedService(IServiceScopeFactory scopeFactory) : IHostedService
 {
@@ -11,7 +12,7 @@ public class MigrationHostedService(IServiceScopeFactory scopeFactory) : IHosted
         var appContext = scope.ServiceProvider.GetRequiredService<EncryptedWrappedDbContext>();
         await appContext.Database.MigrateAsync(cancellationToken);
 
-        await scope.ServiceProvider.MigrateEncryptionContext(cancellationToken);
+        await scope.ServiceProvider.MigrateEncryptionContextAsync(cancellationToken);
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
