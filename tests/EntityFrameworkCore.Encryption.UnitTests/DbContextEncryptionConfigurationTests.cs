@@ -1,9 +1,9 @@
 using System.ComponentModel.DataAnnotations;
 using System.Diagnostics.CodeAnalysis;
-using EntityFrameworkCore.Encryption.Common;
-using EntityFrameworkCore.Encryption.Internal;
-using EntityFrameworkCore.Encryption.Internal.ModelExtensions;
-using EntityFrameworkCore.Encryption.UnitTests.Common;
+using EntityFrameworkCore.Encryption.Common.Exceptions;
+using EntityFrameworkCore.Encryption.IntegrationTests.Common;
+using EntityFrameworkCore.Encryption.ModelBuilderExtensions;
+using EntityFrameworkCore.Encryption.OptionsExtension.Plugin;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;

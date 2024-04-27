@@ -1,10 +1,13 @@
 using System.Data.Common;
 using Amazon.KeyManagementService;
 using Amazon.KeyManagementService.Model;
-using EntityFrameworkCore.Encryption.Common;
+using EntityFrameworkCore.Encryption.Common.Abstractions;
+using EntityFrameworkCore.Encryption.Common.Exceptions;
+using EntityFrameworkCore.Encryption.OptionsExtension;
 using EntityFrameworkCore.Encryption.Postgres.AwsWrapping.Common;
 using EntityFrameworkCore.Encryption.Postgres.AwsWrapping.Database;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -13,6 +16,8 @@ using Npgsql;
 namespace EntityFrameworkCore.Encryption.Postgres.AwsWrapping.Internal;
 
 internal class AwsKeyWrappingHostedService(
+    IServiceScopeFactory scopeProvider,
+    IKeyStorage keyStorage,
     IAmazonKeyManagementService kmsService,
     IDbContextFactory<EncryptionMetadataContext> dbContextFactory,
     IOptions<WrappingOptions> options,
@@ -28,7 +33,20 @@ internal class AwsKeyWrappingHostedService(
 
             try
             {
-                await InitializeInMemoryKeyStorageAsync(cancellationToken);
+                await using var scope = scopeProvider.CreateAsyncScope();
+
+                var registeredDbContexts = scope
+                    .ServiceProvider.GetServices<DbContextOptions>()
+                    .Where(x => x.FindExtension<EncryptionDbContextOptionsExtension>() != null)
+                    .Select(x => new
+                    {
+                        ContextName = x.ContextType.Name,
+                        EncryptionType = x.GetExtension<EncryptionDbContextOptionsExtension>().GetEncryptionType()
+                    });
+
+                foreach (var data in registeredDbContexts)
+                    await InitializeDataKeyAsync(data.ContextName, data.EncryptionType, cancellationToken);
+                
                 return;
             }
             catch (DbUpdateException ex) when (ex.InnerException is DbException { SqlState: PostgresErrorCodes.UniqueViolation })
@@ -38,7 +56,7 @@ internal class AwsKeyWrappingHostedService(
                 // should be ignored and retried
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+            await Task.Delay(TimeSpan.FromSeconds(3), cancellationToken);
         }
 
         throw new EntityFrameworkEncryptionException("Encryption key storage cannot be initialized");
@@ -47,53 +65,53 @@ internal class AwsKeyWrappingHostedService(
     public Task StopAsync(CancellationToken cancellationToken)
         => Task.CompletedTask;
 
-    private async Task InitializeInMemoryKeyStorageAsync(CancellationToken ct)
+    private async Task InitializeDataKeyAsync(string contextName, EncryptionType encryptionType, CancellationToken ct)
     {
-        foreach (var (contextName, specification) in InMemoryKeyStorage.GetRegisteredSpecifications())
+        if (keyStorage.ContainsKey(contextName))
+            return;
+        
+        await using var context = await dbContextFactory.CreateDbContextAsync(ct);
+
+        var metadata = await context.Metadata
+            .FirstOrDefaultAsync(x => x.ContextId == contextName, ct);
+
+        if (metadata == null && !options.Value.GenerateDataKeyIfNotExist)
         {
-            await using var context = await dbContextFactory.CreateDbContextAsync(ct);
-            
-            var metadata = await context.Metadata
-                .FirstOrDefaultAsync(x => x.ContextId == contextName, ct);
+            throw new EntityFrameworkEncryptionException(
+                $"Data encryption key for {contextName} not found");
+        }
 
-            if (metadata == null && !options.Value.GenerateDataKeyIfNotExist)
+        byte[] dataKey;
+
+        if (metadata != null)
+        {
+            dataKey = await DecryptAsync(metadata.Key, ct);
+
+            if (options.Value.ReEncryptDataKeyOnStart)
             {
-                throw new EntityFrameworkEncryptionException(
-                    $"Data encryption key for {contextName} not found");
-            }
+                var reEncryptedDataKey = await EncryptAsync(dataKey, ct);
 
-            byte[] dataKey;
+                await VerifyAsync(dataKey, reEncryptedDataKey, ct);
 
-            if (metadata != null)
-            {
-                dataKey = await DecryptAsync(metadata.Key, ct);
-
-                if (options.Value.ReEncryptDataKeyOnStart)
-                {
-                    var reEncryptedDataKey = await EncryptAsync(dataKey, ct);
-
-                    await VerifyAsync(dataKey, reEncryptedDataKey, ct);
-
-                    metadata.Update(reEncryptedDataKey);
-                    await context.SaveChangesAsync(ct);
-                }
-            }
-            else
-            {
-                var (encrypted, decrypted) =
-                    await GenerateDataKeyAsync(specification.Type, ct);
-
-                dataKey = decrypted;
-
-                context.Metadata.Add(EncryptionMetadata.Create(contextName, encrypted));
-
+                metadata.Update(reEncryptedDataKey);
                 await context.SaveChangesAsync(ct);
             }
-
-            specification.SetKey(dataKey);
-            
-            logger.LogInformation("Data encryption key for context {ContextType} initialized", contextName);
         }
+        else
+        {
+            var (encrypted, decrypted) =
+                await GenerateDataKeyAsync(encryptionType, ct);
+
+            dataKey = decrypted;
+
+            context.Metadata.Add(EncryptionMetadata.Create(contextName, encrypted));
+
+            await context.SaveChangesAsync(ct);
+        }
+
+        keyStorage.AddKey(contextName, dataKey);
+
+        logger.LogInformation("Data encryption key for context {ContextType} initialized", contextName);
     }
 
     private async Task VerifyAsync(byte[] decryptedKey, byte[] reEncryptedDataKey, CancellationToken ct)
@@ -139,9 +157,9 @@ internal class AwsKeyWrappingHostedService(
     {
         var spec = encryptionType switch
         {
-            EncryptionType.AES128 => DataKeySpec.AES_128,
-            EncryptionType.AES256 => DataKeySpec.AES_256,
-            _ => throw new ArgumentOutOfRangeException(nameof(encryptionType), encryptionType, null)
+            EncryptionType.Aes128 => DataKeySpec.AES_128,
+            EncryptionType.Aes256 => DataKeySpec.AES_256,
+            _ => throw new ArgumentOutOfRangeException(nameof(encryptionType), encryptionType, "Data key type is not supported by AWS")
         };
 
         var request = new GenerateDataKeyRequest

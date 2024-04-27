@@ -1,4 +1,4 @@
-using EntityFrameworkCore.Encryption.Internal.ModelExtensions;
+using EntityFrameworkCore.Encryption.ModelBuilderExtensions;
 
 namespace EntityFrameworkCore.Encryption.IntegrationTests.Common;
 

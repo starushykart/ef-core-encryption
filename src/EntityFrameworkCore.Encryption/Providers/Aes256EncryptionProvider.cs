@@ -1,16 +1,16 @@
 using System.Security.Cryptography;
 using EntityFrameworkCore.Encryption.Common.Abstractions;
 
-namespace EntityFrameworkCore.Encryption.Internal.Providers;
+namespace EntityFrameworkCore.Encryption.Providers;
 
-public class AesEncryptionProvider(IKeyProvider keyProvider) : IEncryptionProvider
+internal class Aes256EncryptionProvider(IKeyProvider keyProvider) : IEncryptionProvider
 {
     public byte[]? Encrypt(byte[]? input)
     {
         if (input is null || input.Length == 0)
             return null;
 
-        using var aes = CreateCryptographyProvider(keyProvider.GetDataKey());
+        using var aes = CreateCryptographyProvider(keyProvider.GetKey());
 
         using var memoryStream = new MemoryStream();
         memoryStream.Write(aes.IV);
@@ -27,7 +27,7 @@ public class AesEncryptionProvider(IKeyProvider keyProvider) : IEncryptionProvid
         if (input == null || input.Length == 0)
             return null;
 
-        using var aes = CreateCryptographyProvider(keyProvider.GetDataKey());
+        using var aes = CreateCryptographyProvider(keyProvider.GetKey());
         using var memoryStream = new MemoryStream();
 
         var ivSize = aes.BlockSize / 8;

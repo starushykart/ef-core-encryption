@@ -1,5 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
-using EntityFrameworkCore.Encryption.Common;
+using EntityFrameworkCore.Encryption.Common.Exceptions;
 using Microsoft.EntityFrameworkCore;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Infrastructure.Internal;
 

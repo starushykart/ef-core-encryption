@@ -2,7 +2,7 @@ using System.Text;
 using EntityFrameworkCore.Encryption.Common.Abstractions;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
-namespace EntityFrameworkCore.Encryption.Internal;
+namespace EntityFrameworkCore.Encryption.OptionsExtension.Plugin;
 
 internal sealed class EncryptionConverter(IEncryptionProvider encryptionProvider) 
     : ValueConverter<string?, string?>(

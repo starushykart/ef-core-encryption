@@ -1,4 +1,4 @@
-using EntityFrameworkCore.Encryption.Internal.ModelExtensions;
+using EntityFrameworkCore.Encryption.ModelBuilderExtensions;
 using Microsoft.EntityFrameworkCore;
 
 namespace EntityFrameworkCore.Samples.Encryption.AesWrapping.Database;

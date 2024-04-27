@@ -26,6 +26,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\..\src\EntityFrameworkCore.Encryption.Postgres.AwsWrapping\EntityFrameworkCore.Encryption.Postgres.AwsWrapping.csproj" />
+      <ProjectReference Include="..\EntityFrameworkCore.Encryption.Tests.Shared\EntityFrameworkCore.Encryption.Tests.Shared.csproj" />
     </ItemGroup>
 
 </Project>

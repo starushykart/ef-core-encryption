@@ -1,5 +1,5 @@
 
-namespace EntityFrameworkCore.Encryption.Internal.ModelExtensions;
+namespace EntityFrameworkCore.Encryption.ModelBuilderExtensions;
 
 [AttributeUsage(AttributeTargets.Property)]
 public sealed class EncryptedAttribute : Attribute;

@@ -4,6 +4,7 @@ using EntityFrameworkCore.Encryption.Postgres.AwsWrapping.Database;
 using EntityFrameworkCore.Encryption.Postgres.AwsWrapping.Internal;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace EntityFrameworkCore.Encryption.Postgres.AwsWrapping;
 
@@ -20,6 +21,7 @@ public static class ServiceCollectionExtensions
             .AddOptionsWithValidateOnStart<WrappingOptions>()
             .Configure(awsWrappingOptionsAction.Invoke);
 
+        services.TryAddSingleton(InMemoryKeyStorage.Instance);
         services.TryAddAWSService<IAmazonKeyManagementService>();
         services.AddHostedService<AwsKeyWrappingHostedService>();
         services.AddDbContextFactory<EncryptionMetadataContext>(x => x.UseNpgsql(connectionString));
