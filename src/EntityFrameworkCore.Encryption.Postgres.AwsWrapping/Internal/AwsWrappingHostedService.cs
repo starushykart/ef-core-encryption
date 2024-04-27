@@ -169,7 +169,7 @@ internal class AwsKeyWrappingHostedService(
             KeySpec = spec,
             EncryptionContext = new Dictionary<string, string>()
         };
-        await kmsService.GenerateDataKeyAsync(options.Value.WrappingKeyArn, new AutoConstructedDictionary<string, string>(), spec)
+        await kmsService.GenerateDataKeyAsync(options.Value.WrappingKeyArn, new AutoConstructedDictionary<string, string>(), spec);
         var result = await kmsService.GenerateDataKeyAsync(request, ct);
         var encrypted = result.CiphertextBlob.ToArray();
         var decrypted = result.Plaintext.ToArray();
