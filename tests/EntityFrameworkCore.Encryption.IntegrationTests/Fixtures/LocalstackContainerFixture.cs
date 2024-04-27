@@ -5,7 +5,7 @@ namespace EntityFrameworkCore.Encryption.IntegrationTests.Fixtures;
 public class LocalstackContainerFixture : IAsyncLifetime
 {
     private readonly LocalStackContainer _container = new LocalStackBuilder()
-        .WithImage("localstack/localstack:stable")
+        .WithImage("localstack/localstack:latest")
         .WithEnvironment("SERVICES", "kms")
         .WithName($"db-encryption_localstack_{Guid.NewGuid()}")
         .WithCleanUp(true)
