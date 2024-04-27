@@ -12,6 +12,7 @@
 
     <ItemGroup>
         <InternalsVisibleTo Include="EntityFrameworkCore.Encryption.Postgres.AwsWrapping" />
+        <InternalsVisibleTo Include="EntityFrameworkCore.Encryption.IntegrationTests" />
         <InternalsVisibleTo Include="EntityFrameworkCore.Encryption.UnitTests" />
     </ItemGroup>
 

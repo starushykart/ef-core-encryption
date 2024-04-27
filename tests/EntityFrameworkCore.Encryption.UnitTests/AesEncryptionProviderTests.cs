@@ -1,7 +1,7 @@
 using System.Text;
 using Bogus;
-using EntityFrameworkCore.Encryption.Internal.Providers;
-using EntityFrameworkCore.Encryption.UnitTests.Common;
+using EntityFrameworkCore.Encryption.IntegrationTests.Common;
+using EntityFrameworkCore.Encryption.Providers;
 using FluentAssertions;
 using Xunit;
 
@@ -14,8 +14,8 @@ public class AesEncryptionProviderTests
     [Fact]
     public void Should_encrypt_and_decrypt_successfully()
     {   
-        var keyProvider = new ConstantKeyProvider(TestUtils.GenerateAesKeyBase64());
-        var provider = new AesEncryptionProvider(keyProvider);
+        var keyProvider = new ConstantKeyProvider( TestUtils.GenerateAesKeyBase64());
+        var provider = new Aes256EncryptionProvider(keyProvider);
 
         var stringToEncrypt = _faker.Lorem.Sentence();
         var bytesToEncrypt = Encoding.UTF8.GetBytes(stringToEncrypt);

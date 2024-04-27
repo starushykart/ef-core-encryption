@@ -1,34 +1,31 @@
 using EntityFrameworkCore.Encryption.Common.Abstractions;
+using EntityFrameworkCore.Encryption.OptionsExtension.Plugin;
+using EntityFrameworkCore.Encryption.Providers;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace EntityFrameworkCore.Encryption.Internal;
+namespace EntityFrameworkCore.Encryption.OptionsExtension;
 
-internal sealed class EncryptionDbContextOptionsExtension : IDbContextOptionsExtension
+internal sealed class EncryptionDbContextOptionsExtension(IEncryptionProvider provider) : IDbContextOptionsExtension
 {
     private DbContextOptionsExtensionInfo? _info;
-    private IEncryptionProvider? _provider;
 
-    public EncryptionDbContextOptionsExtension() {}
+    public IEncryptionProvider Provider { get; } = provider;
 
-    private EncryptionDbContextOptionsExtension(EncryptionDbContextOptionsExtension copyFrom)
-    {
-        _provider = copyFrom._provider;
-    }
-    
-    public IEncryptionProvider Provider => _provider ?? throw new InvalidOperationException("Encryption provider not set");
     public DbContextOptionsExtensionInfo Info => _info ??= new EncryptionExtensionInfo(this);
-    
-    private EncryptionDbContextOptionsExtension Clone() => new(this);
 
-    public EncryptionDbContextOptionsExtension WithEncryptionProvider(IEncryptionProvider provider)
+    internal EncryptionDbContextOptionsExtension WithEncryptionProvider(IEncryptionProvider encryptionProvider) => new(encryptionProvider);
+
+    public EncryptionType GetEncryptionType()
     {
-        var clone = Clone();
-        clone._provider = provider;
-        return clone;
+        return Provider switch
+        {
+            Aes256EncryptionProvider => EncryptionType.Aes256,
+            _ => EncryptionType.Custom
+        };
     }
-    
+
     public void ApplyServices(IServiceCollection services)
     {
         new EntityFrameworkServicesBuilder(services)
@@ -46,7 +43,7 @@ internal sealed class EncryptionDbContextOptionsExtension : IDbContextOptionsExt
         public override string LogFragment => "Database encryption";
 
         public override int GetServiceProviderHashCode()
-            => extension.Provider?.GetHashCode() ?? 0;
+            => extension.Provider.GetHashCode();
 
         public override bool ShouldUseSameServiceProvider(DbContextOptionsExtensionInfo other)
             => other is EncryptionExtensionInfo;

@@ -1,3 +1,5 @@
+using EntityFrameworkCore.Encryption.OptionsExtension;
+
 namespace EntityFrameworkCore.Encryption.Postgres.AwsWrapping.Internal;
 
 internal class EncryptionSpecification(EncryptionType type)
@@ -14,9 +16,3 @@ internal class EncryptionSpecification(EncryptionType type)
     }
 }
 
-internal enum EncryptionType
-{
-    None,
-    AES128,
-    AES256
-}

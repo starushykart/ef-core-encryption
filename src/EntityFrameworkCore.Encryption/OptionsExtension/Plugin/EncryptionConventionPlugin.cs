@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions.Infrastructure;
 
-namespace EntityFrameworkCore.Encryption.Internal;
+namespace EntityFrameworkCore.Encryption.OptionsExtension.Plugin;
 
 public class EncryptionConventionPlugin(IDbContextOptions options) : IConventionSetPlugin
 {

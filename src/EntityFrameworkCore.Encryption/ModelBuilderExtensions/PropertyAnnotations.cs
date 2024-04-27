@@ -1,4 +1,4 @@
-namespace EntityFrameworkCore.Encryption.Internal.ModelExtensions;
+namespace EntityFrameworkCore.Encryption.ModelBuilderExtensions;
 
 internal static class PropertyAnnotations
 {

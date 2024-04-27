@@ -5,6 +5,7 @@ namespace EntityFrameworkCore.Encryption.IntegrationTests.Fixtures;
 public class LocalstackContainerFixture : IAsyncLifetime
 {
     private readonly LocalStackContainer _container = new LocalStackBuilder()
+        .WithImage("localstack/localstack:latest")
         .WithEnvironment("SERVICES", "kms")
         .WithName($"db-encryption_localstack_{Guid.NewGuid()}")
         .WithCleanUp(true)
@@ -21,7 +22,7 @@ public class LocalstackContainerFixture : IAsyncLifetime
             "kms",
             "create-key",
             "--tags",
-            $"'[{{\"TagKey\":\"_custom_id_\",\"TagValue\":\"{TestKeyId}\"}}]'"
+            $"TagKey=_custom_id_,TagValue={TestKeyId}"
         ]);
     }
 

@@ -1,6 +1,6 @@
 using EntityFrameworkCore.Encryption.Common.Abstractions;
 
-namespace EntityFrameworkCore.Encryption.Internal.Providers;
+namespace EntityFrameworkCore.Encryption.Providers;
 
 internal class DesignTimeEncryptionProvider : IEncryptionProvider
 {

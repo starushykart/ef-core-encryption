@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
-namespace EntityFrameworkCore.Encryption.Internal.ModelExtensions;
+namespace EntityFrameworkCore.Encryption.ModelBuilderExtensions;
 
 public static class PropertyBuilderExtensions
 {
