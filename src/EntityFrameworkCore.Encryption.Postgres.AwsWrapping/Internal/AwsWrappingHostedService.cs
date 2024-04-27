@@ -1,6 +1,7 @@
 using System.Data.Common;
 using Amazon.KeyManagementService;
 using Amazon.KeyManagementService.Model;
+using Amazon.Runtime.Internal;
 using EntityFrameworkCore.Encryption.Common.Abstractions;
 using EntityFrameworkCore.Encryption.Common.Exceptions;
 using EntityFrameworkCore.Encryption.OptionsExtension;
@@ -168,7 +169,7 @@ internal class AwsKeyWrappingHostedService(
             KeySpec = spec,
             EncryptionContext = new Dictionary<string, string>()
         };
-        
+        await kmsService.GenerateDataKeyAsync(options.Value.WrappingKeyArn, new AutoConstructedDictionary<string, string>(), spec)
         var result = await kmsService.GenerateDataKeyAsync(request, ct);
         var encrypted = result.CiphertextBlob.ToArray();
         var decrypted = result.Plaintext.ToArray();
