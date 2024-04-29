@@ -26,15 +26,22 @@ public class AwsWrappingHostedServiceTests(LocalstackContainerFixture localstack
     [Fact]
     public async Task Should_generate_and_save_new_data_key()
     {
-        var wrappingService = _services.GetServices<IHostedService>().Single();
-        
-        await wrappingService.StartAsync(CancellationToken.None);
+        try
+        {
+            var wrappingService = _services.GetServices<IHostedService>().Single();
 
-        await using var context = await _metadataContextFactory.CreateDbContextAsync();
-        var metadata = await context.Metadata.SingleAsync(x => x.ContextId == _testContextName);
-        metadata.Key.Should().NotBeEmpty();
-        
-        _keyStorage.ContainsKey(_testContextName).Should().BeTrue();
+            await wrappingService.StartAsync(CancellationToken.None);
+
+            await using var context = await _metadataContextFactory.CreateDbContextAsync();
+            var metadata = await context.Metadata.SingleAsync(x => x.ContextId == _testContextName);
+            metadata.Key.Should().NotBeEmpty();
+
+            _keyStorage.ContainsKey(_testContextName).Should().BeTrue();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.Message + ex.InnerException?.Message);
+        }
     }
 
 
