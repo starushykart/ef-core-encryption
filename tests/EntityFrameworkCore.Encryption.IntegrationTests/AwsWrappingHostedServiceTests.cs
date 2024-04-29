@@ -7,13 +7,18 @@ using EntityFrameworkCore.Encryption.Postgres.AwsWrapping.Common;
 using EntityFrameworkCore.Encryption.Postgres.AwsWrapping.Database;
 using EntityFrameworkCore.Encryption.Tests.Shared;
 using FluentAssertions;
+using MartinCostello.Logging.XUnit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace EntityFrameworkCore.Encryption.IntegrationTests;
 
-public class AwsWrappingHostedServiceTests(LocalstackContainerFixture localstack, PostgresContainerFixture postgres) :
+public class AwsWrappingHostedServiceTests(
+    LocalstackContainerFixture localstack,
+    PostgresContainerFixture postgres,
+    ITestOutputHelperAccessor acessor) :
     IClassFixture<LocalstackContainerFixture>,
     IClassFixture<PostgresContainerFixture>,
     IAsyncLifetime
@@ -40,7 +45,8 @@ public class AwsWrappingHostedServiceTests(LocalstackContainerFixture localstack
         }
         catch (Exception ex)
         {
-            Console.WriteLine(ex.Message + ex.InnerException?.Message);
+            var a = _services.GetRequiredService<ILogger<AwsWrappingHostedServiceTests>>();
+            a.LogError(ex, $"{ex.Message + ex.InnerException?.Message}");
             throw;
         }
     }
@@ -50,12 +56,12 @@ public class AwsWrappingHostedServiceTests(LocalstackContainerFixture localstack
     {
         _keyStorage = new TestInMemoryKeyStorage();
         _testContextName = nameof(TestDbContext);
-        
+
         _services = new ServiceCollection()
             .AddSingleton<IAmazonKeyManagementService>(new AmazonKeyManagementServiceClient(
                 new AmazonKeyManagementServiceConfig { ServiceURL = localstack.Url }))
             .AddSingleton<IKeyStorage>(_keyStorage)
-            .AddLogging()
+            .AddLogging(x => x.AddXUnit(acessor))
             .AddAwsAesDataKeyWrapping(postgres.ConnectionString, x => x
                 .WithKeyArn(localstack.TestKeyId.ToString())
                 .GenerateDataKeyIfNotExist())
