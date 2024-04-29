@@ -12,13 +12,14 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Xunit.Abstractions;
 
 namespace EntityFrameworkCore.Encryption.IntegrationTests;
 
 public class AwsWrappingHostedServiceTests(
     LocalstackContainerFixture localstack,
     PostgresContainerFixture postgres,
-    ITestOutputHelperAccessor acessor) :
+    ITestOutputHelper helper) :
     IClassFixture<LocalstackContainerFixture>,
     IClassFixture<PostgresContainerFixture>,
     IAsyncLifetime
@@ -61,7 +62,7 @@ public class AwsWrappingHostedServiceTests(
             .AddSingleton<IAmazonKeyManagementService>(new AmazonKeyManagementServiceClient(
                 new AmazonKeyManagementServiceConfig { ServiceURL = localstack.Url }))
             .AddSingleton<IKeyStorage>(_keyStorage)
-            .AddLogging(x => x.AddXUnit(acessor))
+            .AddLogging(x => x.AddXUnit(helper))
             .AddAwsAesDataKeyWrapping(postgres.ConnectionString, x => x
                 .WithKeyArn(localstack.TestKeyId.ToString())
                 .GenerateDataKeyIfNotExist())
