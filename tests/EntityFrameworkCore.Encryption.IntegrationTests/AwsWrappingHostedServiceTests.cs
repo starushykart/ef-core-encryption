@@ -41,6 +41,7 @@ public class AwsWrappingHostedServiceTests(LocalstackContainerFixture localstack
         catch (Exception ex)
         {
             Console.WriteLine(ex.Message + ex.InnerException?.Message);
+            throw;
         }
     }
 
