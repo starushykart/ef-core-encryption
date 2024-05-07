@@ -1,4 +1,5 @@
 using Amazon.KeyManagementService;
+using Amazon.Runtime;
 using EntityFrameworkCore.Encryption.Common.Abstractions;
 using EntityFrameworkCore.Encryption.IntegrationTests.Common;
 using EntityFrameworkCore.Encryption.IntegrationTests.Fixtures;
@@ -60,6 +61,7 @@ public class AwsWrappingHostedServiceTests(
 
         _services = new ServiceCollection()
             .AddSingleton<IAmazonKeyManagementService>(new AmazonKeyManagementServiceClient(
+                new BasicAWSCredentials("admin", "admin"),
                 new AmazonKeyManagementServiceConfig { ServiceURL = localstack.Url }))
             .AddSingleton<IKeyStorage>(_keyStorage)
             .AddLogging(x => x.AddXUnit(helper))
