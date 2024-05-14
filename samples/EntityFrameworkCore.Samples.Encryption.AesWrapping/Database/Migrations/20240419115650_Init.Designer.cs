@@ -39,7 +39,7 @@ namespace EntityFrameworkCore.Samples.Encryption.AesWrapping.Database.Migrations
                     b.Property<string>("EncryptedFluent")
                         .IsRequired()
                         .HasColumnType("text")
-                        .HasAnnotation("Microsoft.EntityFrameworkCore.Encryption.IsEncrypted", true);
+                        .HasAnnotation("Microsoft.EntityFrameworkCore.Encrypted.IsEncrypted", true);
 
                     b.Property<string>("Original")
                         .IsRequired()

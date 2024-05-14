@@ -1,0 +1,32 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <IsPackable>true</IsPackable>
+        <TargetFramework>net8.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <Title>EntityFrameworkCore.Encrypted.Postgres.AwsWrapping</Title>
+        <Authors>starushykart</Authors>
+        <PackageId>EntityFrameworkCore.Encrypted.Postgres.AwsWrapping</PackageId>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\EntityFrameworkCore.Encrypted\EntityFrameworkCore.Encrypted.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="AWSSDK.Extensions.NETCore.Setup" Version="3.7.300" />
+      <PackageReference Include="AWSSDK.KeyManagementService" Version="3.7.302.13" />
+      <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.2">
+        <PrivateAssets>all</PrivateAssets>
+        <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      </PackageReference>
+      <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.0.0" />
+      <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.2" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="EntityFrameworkCore.Encrypted.IntegrationTests" />
+    </ItemGroup>
+
+</Project>

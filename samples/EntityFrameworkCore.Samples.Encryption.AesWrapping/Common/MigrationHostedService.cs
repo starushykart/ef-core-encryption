@@ -1,4 +1,4 @@
-using EntityFrameworkCore.Encryption.Postgres.AwsWrapping.Database;
+using EntityFrameworkCore.Encrypted.Postgres.AwsWrapping.Database;
 using EntityFrameworkCore.Samples.Encryption.AesWrapping.Database;
 using Microsoft.EntityFrameworkCore;
 
