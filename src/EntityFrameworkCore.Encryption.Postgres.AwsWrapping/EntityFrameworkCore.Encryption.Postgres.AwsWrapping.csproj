@@ -6,6 +6,7 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <Title>EntityFrameworkCore.Encryption.Postgres.AwsWrapping</Title>
+        <Authors>starushykart</Authors>
     </PropertyGroup>
 
     <ItemGroup>
