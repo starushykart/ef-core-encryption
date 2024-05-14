@@ -9,8 +9,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-    - name: Extract version from tag
-      run: echo "PACKAGE_VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+    
+    - name: Set Version Variable
+      if: ${{ github.ref_type == 'tag' }}
+      env:
+        TAG: ${{ github.ref_name }}
+      run: echo "VERSION=${TAG#v}" >> $GITHUB_ENV
+      
     - name: Checkout
       uses: actions/checkout@v2
     - name: Setup .NET SDK
@@ -20,6 +25,6 @@ jobs:
     - name: Test
       run: dotnet test -c Release --no-build
     - name: Pack nugets
-      run: dotnet pack -c Release --no-build --output . /p:PackageVersion=${{ env.PACKAGE_VERSION }}
+      run: dotnet pack -c Release --no-build --output . /p:PackageVersion=$VERSION
     - name: Push to NuGet
       run: dotnet nuget push "*.nupkg" --api-key ${{ secrets.NUGET_API_KEY1 }} --source https://api.nuget.org/v3/index.json
