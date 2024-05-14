@@ -5,8 +5,9 @@
         <TargetFramework>net8.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
-        <Title>EntityFrameworkCore.Encryption.Postgres.AwsWrapping</Title>
+        <Title>EntityFrameworkCore.Encrypted.Postgres.AwsWrapping</Title>
         <Authors>starushykart</Authors>
+        <PackageId>EntityFrameworkCore.Encrypted.Postgres.AwsWrapping</PackageId>
     </PropertyGroup>
 
     <ItemGroup>
