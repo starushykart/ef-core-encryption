@@ -20,66 +20,55 @@ public class AwsWrappingHostedServiceTests(
     LocalstackContainerFixture localstack,
     PostgresContainerFixture postgres,
     ITestOutputHelper helper) :
-    IClassFixture<LocalstackContainerFixture>,
-    IClassFixture<PostgresContainerFixture>,
-    IAsyncLifetime
+    BaseDatabaseTest(postgres),
+    IClassFixture<LocalstackContainerFixture>
 {
-    private ServiceProvider _services = null!;
+    private const string TestContextName = nameof(TestDbContext);
+
     private TestInMemoryKeyStorage _keyStorage = null!;
-    private IDbContextFactory<EncryptionMetadataContext> _metadataContextFactory = null!;
-    private string _testContextName = null!;
 
     [Fact]
     public async Task Should_generate_and_save_new_data_key()
     {
-        try
-        {
-            var wrappingService = _services.GetServices<IHostedService>().Single();
+        var wrappingService = Provider.GetServices<IHostedService>().Single();
+        var metadataContextFactory = Provider.GetRequiredService<IDbContextFactory<EncryptionMetadataContext>>();
 
-            await wrappingService.StartAsync(CancellationToken.None);
+        await wrappingService.StartAsync(CancellationToken.None);
+        
+        await using var context = await metadataContextFactory.CreateDbContextAsync();
+        var metadata = await context.Metadata
+            .SingleOrDefaultAsync(x => x.ContextId == TestContextName);
 
-            await using var context = await _metadataContextFactory.CreateDbContextAsync();
-            var metadata = await context.Metadata.SingleAsync(x => x.ContextId == _testContextName);
-            metadata.Key.Should().NotBeEmpty();
+        metadata.Should().NotBeNull();
+        metadata!.ContextId.Should().Be(TestContextName);
+        metadata!.Key.Should().NotBeEmpty();
 
-            _keyStorage.ContainsKey(_testContextName).Should().BeTrue();
-        }
-        catch (Exception ex)
-        {
-            var a = _services.GetRequiredService<ILogger<AwsWrappingHostedServiceTests>>();
-            a.LogError(ex, $"{ex.Message + ex.InnerException?.Message}");
-            throw;
-        }
+        _keyStorage.ContainsKey(TestContextName).Should().BeTrue();
+        _keyStorage.GetKey(TestContextName).Should().NotBeEmpty();
     }
 
-
-    public async Task InitializeAsync()
+    protected override void Configure(IServiceCollection services)
     {
         _keyStorage = new TestInMemoryKeyStorage();
-        _testContextName = nameof(TestDbContext);
 
-        _services = new ServiceCollection()
-            .AddSingleton<IAmazonKeyManagementService>(new AmazonKeyManagementServiceClient(
+        services.AddSingleton<IAmazonKeyManagementService>(new AmazonKeyManagementServiceClient(
                 new BasicAWSCredentials("admin", "admin"),
                 new AmazonKeyManagementServiceConfig { ServiceURL = localstack.Url }))
             .AddSingleton<IKeyStorage>(_keyStorage)
             .AddLogging(x => x.AddXUnit(helper))
-            .AddAwsAesDataKeyWrapping(postgres.ConnectionString, x => x
+            .AddAwsAesDataKeyWrapping(ConnectionString, x => x
                 .WithKeyArn(localstack.TestKeyId.ToString())
                 .GenerateDataKeyIfNotExist())
             .AddDbContext<TestDbContext>(x => x
-                .UseNpgsql(postgres.ConnectionString)
-                .UseAes256Encryption())
-            .BuildServiceProvider(true);
-
-        _metadataContextFactory = _services.GetRequiredService<IDbContextFactory<EncryptionMetadataContext>>();
-
-        await using var scope = _services.CreateAsyncScope();
-        //var dbContext = _testScope.ServiceProvider.GetRequiredService<TestDbContext>();
-        //await dbContext.Database.MigrateAsync();
-        await scope.ServiceProvider.MigrateEncryptionContextAsync();
+                .UseNpgsql(ConnectionString)
+                .UseAes256Encryption());
     }
 
-    public async Task DisposeAsync()
-        => await _services.DisposeAsync();
+    protected override async Task MigrateAsync(IServiceScope scope)
+    {
+        await scope.ServiceProvider.MigrateEncryptionContextAsync();
+
+        var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+        await dbContext.Database.MigrateAsync();
+    }
 }

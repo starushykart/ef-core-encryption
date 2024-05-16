@@ -46,8 +46,12 @@ internal class AwsKeyWrappingHostedService(
                     });
 
                 foreach (var data in registeredDbContexts)
+                {
                     await InitializeDataKeyAsync(data.ContextName, data.EncryptionType, cancellationToken);
-                
+                    
+                    logger.LogInformation("Data encryption key for {ContextType} initialized successfully", data.ContextName);
+                }
+
                 return;
             }
             catch (DbUpdateException ex) when (ex.InnerException is DbException { SqlState: PostgresErrorCodes.UniqueViolation })
@@ -111,8 +115,6 @@ internal class AwsKeyWrappingHostedService(
         }
 
         keyStorage.AddKey(contextName, dataKey);
-
-        logger.LogInformation("Data encryption key for context {ContextType} initialized", contextName);
     }
 
     private async Task VerifyAsync(byte[] decryptedKey, byte[] reEncryptedDataKey, CancellationToken ct)
