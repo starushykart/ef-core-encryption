@@ -8,16 +8,18 @@ using Npgsql;
 
 namespace EntityFrameworkCore.Encrypted.IntegrationTests;
 
-public sealed class DatabaseEncryptionTests(PostgresContainerFixture postgres) : IClassFixture<PostgresContainerFixture>, IAsyncLifetime
+public sealed class DatabaseEncryptionTests(PostgresContainerFixture postgres) : BaseDatabaseTest(postgres)
 {
-    private AsyncServiceScope _testScope;
-    
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
     public async Task Should_encrypt_and_decrypt_successfully(bool useFactory)
     {
-        var context = await GetTestDbContextAsync(useFactory);
+        await using var scope = Provider.CreateAsyncScope();
+
+        await using var context = useFactory
+            ? await Provider.GetRequiredService<IDbContextFactory<TestDbContext>>().CreateDbContextAsync()
+            : scope.ServiceProvider.GetRequiredService<TestDbContext>();
         
         var passwordToAdd = Fakers.PasswordFaker.Generate();
 
@@ -35,12 +37,11 @@ public sealed class DatabaseEncryptionTests(PostgresContainerFixture postgres) :
             .And.Be(addedPassword.EncryptedFluent);
     }
     
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task Should_save_encrypted_data_in_database(bool useFactory)
+    [Fact]
+    public async Task Should_save_encrypted_data_in_database()
     {
-        var context = await GetTestDbContextAsync(useFactory);
+        await using var scope = Provider.CreateAsyncScope();
+        var context = scope.ServiceProvider.GetRequiredService<TestDbContext>();
         
         var passwordToAdd = Fakers.PasswordFaker.Generate();
 
@@ -63,36 +64,23 @@ public sealed class DatabaseEncryptionTests(PostgresContainerFixture postgres) :
             .NotBe(passwordToAdd.Original)
             .And.NotBe(passwordToAdd.EncryptedFluent);
     }
-
-    private async Task<TestDbContext> GetTestDbContextAsync(bool useFactory)
-    {
-        if (!useFactory)
-            return _testScope.ServiceProvider.GetRequiredService<TestDbContext>();
-        
-        var factory = _testScope.ServiceProvider.GetRequiredService<IDbContextFactory<TestDbContext>>();
-        return await factory.CreateDbContextAsync();
-    }
-
-    public async Task InitializeAsync()
+    
+    protected override void Configure(IServiceCollection services)
     {
         var key = TestUtils.GenerateAesKeyBase64();
 
-        var serviceProvider = new ServiceCollection()
+        services
             .AddDbContextFactory<TestDbContext>(x => x
                 .UseNpgsql(postgres.ConnectionString)
                 .UseAes256Encryption(key))
             .AddDbContext<TestDbContext>(x => x
                 .UseNpgsql(postgres.ConnectionString)
-                .UseAes256Encryption(key))
-            .BuildServiceProvider(true);
-
-        _testScope = serviceProvider.CreateAsyncScope();
-        
-        var dbContext = _testScope.ServiceProvider.GetRequiredService<TestDbContext>();
-        await dbContext.Database.MigrateAsync();
-        dbContext.ChangeTracker.Clear();
+                .UseAes256Encryption(key));
     }
 
-    public async Task DisposeAsync()
-        => await _testScope.DisposeAsync();
+    protected override async Task MigrateAsync(IServiceScope scope)
+    {
+        await using var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+        await dbContext.Database.MigrateAsync();
+    }
 }

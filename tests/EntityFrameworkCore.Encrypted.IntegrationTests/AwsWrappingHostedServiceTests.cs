@@ -68,7 +68,7 @@ public class AwsWrappingHostedServiceTests(
     {
         await scope.ServiceProvider.MigrateEncryptionContextAsync();
 
-        var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+        await using var dbContext = scope.ServiceProvider.GetRequiredService<TestDbContext>();
         await dbContext.Database.MigrateAsync();
     }
 }

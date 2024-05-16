@@ -19,7 +19,8 @@ public abstract class BaseDatabaseTest(PostgresContainerFixture postgres) : ICla
 
         _respawner = await Respawner.CreateAsync(_dbConnection, new RespawnerOptions
         {
-            DbAdapter = DbAdapter.Postgres
+            DbAdapter = DbAdapter.Postgres,
+            TablesToIgnore = ["__EFMigrationsHistory"]
         });
     }
 
