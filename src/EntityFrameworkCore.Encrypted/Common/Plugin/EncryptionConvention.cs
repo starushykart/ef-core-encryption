@@ -1,11 +1,11 @@
 using System.Reflection;
-using EntityFrameworkCore.Encrypted.Common;
+using EntityFrameworkCore.Encrypted.Annotations;
 using EntityFrameworkCore.Encrypted.Common.Abstractions;
 using EntityFrameworkCore.Encrypted.Common.Exceptions;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions;
 
-namespace EntityFrameworkCore.Encrypted.OptionsExtension.Plugin;
+namespace EntityFrameworkCore.Encrypted.Common.Plugin;
 
 public class EncryptionConvention(IEncryptionProvider provider) : IModelFinalizingConvention
 {

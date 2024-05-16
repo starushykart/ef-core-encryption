@@ -1,8 +1,8 @@
 using System.ComponentModel.DataAnnotations;
 using System.Diagnostics.CodeAnalysis;
-using EntityFrameworkCore.Encrypted.Common;
+using EntityFrameworkCore.Encrypted.Annotations;
 using EntityFrameworkCore.Encrypted.Common.Exceptions;
-using EntityFrameworkCore.Encrypted.OptionsExtension.Plugin;
+using EntityFrameworkCore.Encrypted.Common.Plugin;
 using EntityFrameworkCore.Encrypted.Tests.Shared;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;

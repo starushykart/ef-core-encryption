@@ -1,11 +1,11 @@
 using EntityFrameworkCore.Encrypted.Common.Abstractions;
-using EntityFrameworkCore.Encrypted.OptionsExtension.Plugin;
+using EntityFrameworkCore.Encrypted.Common.Plugin;
 using EntityFrameworkCore.Encrypted.Providers;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace EntityFrameworkCore.Encrypted.OptionsExtension;
+namespace EntityFrameworkCore.Encrypted.Common;
 
 internal sealed class EncryptionDbContextOptionsExtension(IEncryptionProvider provider) : IDbContextOptionsExtension
 {

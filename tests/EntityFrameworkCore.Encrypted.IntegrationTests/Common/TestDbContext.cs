@@ -1,3 +1,4 @@
+using EntityFrameworkCore.Encrypted.Annotations;
 using Microsoft.EntityFrameworkCore;
 
 namespace EntityFrameworkCore.Encrypted.IntegrationTests.Common;

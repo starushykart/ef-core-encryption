@@ -1,4 +1,4 @@
-namespace EntityFrameworkCore.Encrypted.OptionsExtension;
+namespace EntityFrameworkCore.Encrypted.Common;
 
 internal enum EncryptionType
 {

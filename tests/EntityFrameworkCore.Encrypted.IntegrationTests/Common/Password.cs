@@ -1,3 +1,5 @@
+using EntityFrameworkCore.Encrypted.Annotations;
+
 namespace EntityFrameworkCore.Encrypted.IntegrationTests.Common;
 
 public class Password

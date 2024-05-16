@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using EntityFrameworkCore.Encrypted.Common.Abstractions;
 using EntityFrameworkCore.Encrypted.Common.Exceptions;
 
-namespace EntityFrameworkCore.Encrypted;
+namespace EntityFrameworkCore.Encrypted.Providers;
 
 public class InMemoryKeyStorage : IKeyStorage
 {

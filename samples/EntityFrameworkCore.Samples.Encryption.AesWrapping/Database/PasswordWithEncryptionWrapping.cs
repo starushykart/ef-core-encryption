@@ -1,4 +1,4 @@
-using EntityFrameworkCore.Encrypted;
+using EntityFrameworkCore.Encrypted.Annotations;
 
 namespace EntityFrameworkCore.Samples.Encryption.AesWrapping.Database;
 

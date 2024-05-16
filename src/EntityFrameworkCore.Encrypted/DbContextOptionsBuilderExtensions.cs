@@ -1,5 +1,5 @@
+using EntityFrameworkCore.Encrypted.Common;
 using EntityFrameworkCore.Encrypted.Common.Abstractions;
-using EntityFrameworkCore.Encrypted.OptionsExtension;
 using EntityFrameworkCore.Encrypted.Providers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -18,13 +18,6 @@ public static class DbContextOptionsBuilderExtensions
         return optionsBuilder.UseEncryption(encryptionProvider);
     }
     
-    public static DbContextOptionsBuilder<TContext> UseDesignTimeEncryption<TContext>(this DbContextOptionsBuilder<TContext> optionsBuilder)
-        where TContext : DbContext
-    {
-        optionsBuilder.UseEncryption(new DesignTimeEncryptionProvider());
-        return optionsBuilder;
-    }
-    
     public static DbContextOptionsBuilder UseEncryption(this DbContextOptionsBuilder optionsBuilder, IEncryptionProvider encryptionProvider)
     {
         var extension = (optionsBuilder.Options.FindExtension<EncryptionDbContextOptionsExtension>()
@@ -33,6 +26,13 @@ public static class DbContextOptionsBuilderExtensions
 
         ((IDbContextOptionsBuilderInfrastructure)optionsBuilder).AddOrUpdateExtension(extension);
         
+        return optionsBuilder;
+    }
+    
+    public static DbContextOptionsBuilder<TContext> UseDesignTimeEncryption<TContext>(this DbContextOptionsBuilder<TContext> optionsBuilder)
+        where TContext : DbContext
+    {
+        optionsBuilder.UseEncryption(new DesignTimeEncryptionProvider());
         return optionsBuilder;
     }
 }

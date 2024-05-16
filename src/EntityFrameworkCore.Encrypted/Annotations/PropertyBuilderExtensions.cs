@@ -1,7 +1,6 @@
-using EntityFrameworkCore.Encrypted.Common;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
-namespace EntityFrameworkCore.Encrypted;
+namespace EntityFrameworkCore.Encrypted.Annotations;
 
 public static class PropertyBuilderExtensions
 {

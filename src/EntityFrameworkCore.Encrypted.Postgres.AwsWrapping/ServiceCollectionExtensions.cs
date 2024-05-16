@@ -2,6 +2,7 @@ using Amazon.KeyManagementService;
 using EntityFrameworkCore.Encrypted.Postgres.AwsWrapping.Common;
 using EntityFrameworkCore.Encrypted.Postgres.AwsWrapping.Database;
 using EntityFrameworkCore.Encrypted.Postgres.AwsWrapping.Internal;
+using EntityFrameworkCore.Encrypted.Providers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
