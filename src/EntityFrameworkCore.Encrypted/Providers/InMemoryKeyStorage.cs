@@ -8,7 +8,7 @@ public class InMemoryKeyStorage : IKeyStorage
 {
     private static readonly ConcurrentDictionary<string, byte[]> Keys = [];
 
-    public static readonly IKeyStorage Instance = new InMemoryKeyStorage();
+    public static readonly InMemoryKeyStorage Instance = new();
 
     private InMemoryKeyStorage()
     { }
@@ -26,4 +26,7 @@ public class InMemoryKeyStorage : IKeyStorage
 
     public bool ContainsKey(string contextName)
         => Keys.ContainsKey(contextName);
+
+    internal void Clear()
+        => Keys.Clear();
 }

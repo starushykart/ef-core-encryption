@@ -50,7 +50,7 @@ public sealed class DatabaseEncryptionTests(PostgresContainerFixture postgres) :
         context.ChangeTracker.Clear();
 
         // directly get field from database to be sure that it was actually encrypted
-        await using var connection = new NpgsqlConnection(postgres.ConnectionString);
+        await using var connection = new NpgsqlConnection(ConnectionString);
 
         var cmd = new NpgsqlCommand(
             $"""select "EncryptedFluent" from "Passwords" where "Id"='{passwordToAdd.Id}'""", connection);
@@ -71,10 +71,10 @@ public sealed class DatabaseEncryptionTests(PostgresContainerFixture postgres) :
 
         services
             .AddDbContextFactory<TestDbContext>(x => x
-                .UseNpgsql(postgres.ConnectionString)
+                .UseNpgsql(ConnectionString)
                 .UseAes256Encryption(key))
             .AddDbContext<TestDbContext>(x => x
-                .UseNpgsql(postgres.ConnectionString)
+                .UseNpgsql(ConnectionString)
                 .UseAes256Encryption(key));
     }
 

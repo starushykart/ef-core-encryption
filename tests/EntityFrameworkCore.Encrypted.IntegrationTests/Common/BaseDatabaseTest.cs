@@ -1,4 +1,5 @@
 using EntityFrameworkCore.Encrypted.IntegrationTests.Fixtures;
+using EntityFrameworkCore.Encrypted.Providers;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Respawn;
@@ -42,6 +43,8 @@ public abstract class BaseDatabaseTest(PostgresContainerFixture postgres) : ICla
         await _respawner.ResetAsync(_dbConnection);
         await _dbConnection.DisposeAsync();
         await Provider.DisposeAsync();
+        
+        InMemoryKeyStorage.Instance.Clear();
     }
 
     protected abstract void Configure(IServiceCollection services);

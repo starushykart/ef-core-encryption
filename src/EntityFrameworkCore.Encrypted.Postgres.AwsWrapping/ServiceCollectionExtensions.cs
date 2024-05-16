@@ -1,4 +1,5 @@
 using Amazon.KeyManagementService;
+using EntityFrameworkCore.Encrypted.Common.Abstractions;
 using EntityFrameworkCore.Encrypted.Postgres.AwsWrapping.Common;
 using EntityFrameworkCore.Encrypted.Postgres.AwsWrapping.Database;
 using EntityFrameworkCore.Encrypted.Postgres.AwsWrapping.Internal;
@@ -22,7 +23,7 @@ public static class ServiceCollectionExtensions
             .AddOptionsWithValidateOnStart<WrappingOptions>()
             .Configure(awsWrappingOptionsAction.Invoke);
 
-        services.TryAddSingleton(InMemoryKeyStorage.Instance);
+        services.TryAddSingleton<IKeyStorage>(InMemoryKeyStorage.Instance);
         services.TryAddAWSService<IAmazonKeyManagementService>();
         services.AddHostedService<AwsKeyWrappingHostedService>();
         services.AddDbContextFactory<EncryptionMetadataContext>(x => x.UseNpgsql(connectionString));

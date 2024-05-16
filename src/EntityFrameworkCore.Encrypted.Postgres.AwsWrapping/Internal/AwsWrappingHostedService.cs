@@ -36,20 +36,20 @@ internal class AwsKeyWrappingHostedService(
             {
                 await using var scope = scopeProvider.CreateAsyncScope();
 
-                var registeredDbContexts = scope
-                    .ServiceProvider.GetServices<DbContextOptions>()
+                var registeredDbContexts = scope.ServiceProvider
+                    .GetServices<DbContextOptions>()
                     .Where(x => x.FindExtension<EncryptionDbContextOptionsExtension>() != null)
                     .Select(x => new
                     {
-                        ContextName = x.ContextType.Name,
-                        EncryptionType = x.GetExtension<EncryptionDbContextOptionsExtension>().GetEncryptionType()
+                        x.ContextType.Name,
+                        x.GetExtension<EncryptionDbContextOptionsExtension>().EncryptionType
                     });
 
-                foreach (var data in registeredDbContexts)
+                foreach (var context in registeredDbContexts)
                 {
-                    await InitializeDataKeyAsync(data.ContextName, data.EncryptionType, cancellationToken);
+                    await InitializeDataKeyAsync(context.Name, context.EncryptionType, cancellationToken);
                     
-                    logger.LogInformation("Data encryption key for {ContextType} initialized successfully", data.ContextName);
+                    logger.LogInformation("Data encryption key for {Context} initialized successfully", context.Name);
                 }
 
                 return;

@@ -17,15 +17,6 @@ internal sealed class EncryptionDbContextOptionsExtension(IEncryptionProvider pr
 
     internal EncryptionDbContextOptionsExtension WithEncryptionProvider(IEncryptionProvider encryptionProvider) => new(encryptionProvider);
 
-    public EncryptionType GetEncryptionType()
-    {
-        return Provider switch
-        {
-            Aes256EncryptionProvider => EncryptionType.Aes256,
-            _ => EncryptionType.Custom
-        };
-    }
-
     public void ApplyServices(IServiceCollection services)
     {
         new EntityFrameworkServicesBuilder(services)
@@ -34,6 +25,12 @@ internal sealed class EncryptionDbContextOptionsExtension(IEncryptionProvider pr
 
     public void Validate(IDbContextOptions options)
     { }
+
+    public EncryptionType EncryptionType => Provider switch
+    {
+        Aes256EncryptionProvider => EncryptionType.Aes256,
+        _ => EncryptionType.Custom
+    };
 
     private class EncryptionExtensionInfo(EncryptionDbContextOptionsExtension extension)
         : DbContextOptionsExtensionInfo(extension)

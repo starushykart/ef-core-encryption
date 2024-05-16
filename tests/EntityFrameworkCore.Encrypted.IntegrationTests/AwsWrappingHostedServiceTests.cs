@@ -1,12 +1,11 @@
 using Amazon.KeyManagementService;
 using Amazon.Runtime;
-using EntityFrameworkCore.Encrypted.Common.Abstractions;
 using EntityFrameworkCore.Encrypted.IntegrationTests.Common;
 using EntityFrameworkCore.Encrypted.IntegrationTests.Fixtures;
 using EntityFrameworkCore.Encrypted.Postgres.AwsWrapping;
 using EntityFrameworkCore.Encrypted.Postgres.AwsWrapping.Common;
 using EntityFrameworkCore.Encrypted.Postgres.AwsWrapping.Database;
-using EntityFrameworkCore.Encrypted.Tests.Shared;
+using EntityFrameworkCore.Encrypted.Providers;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -24,9 +23,7 @@ public class AwsWrappingHostedServiceTests(
     IClassFixture<LocalstackContainerFixture>
 {
     private const string TestContextName = nameof(TestDbContext);
-
-    private TestInMemoryKeyStorage _keyStorage = null!;
-
+    
     [Fact]
     public async Task Should_generate_and_save_new_data_key()
     {
@@ -43,18 +40,15 @@ public class AwsWrappingHostedServiceTests(
         metadata!.ContextId.Should().Be(TestContextName);
         metadata!.Key.Should().NotBeEmpty();
 
-        _keyStorage.ContainsKey(TestContextName).Should().BeTrue();
-        _keyStorage.GetKey(TestContextName).Should().NotBeEmpty();
+        InMemoryKeyStorage.Instance.ContainsKey(TestContextName).Should().BeTrue();
+        InMemoryKeyStorage.Instance.GetKey(TestContextName).Should().NotBeEmpty();
     }
 
     protected override void Configure(IServiceCollection services)
     {
-        _keyStorage = new TestInMemoryKeyStorage();
-
         services.AddSingleton<IAmazonKeyManagementService>(new AmazonKeyManagementServiceClient(
                 new BasicAWSCredentials("admin", "admin"),
                 new AmazonKeyManagementServiceConfig { ServiceURL = localstack.Url }))
-            .AddSingleton<IKeyStorage>(_keyStorage)
             .AddLogging(x => x.AddXUnit(helper))
             .AddAwsAesDataKeyWrapping(ConnectionString, x => x
                 .WithKeyArn(localstack.TestKeyId.ToString())
