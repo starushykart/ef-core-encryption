@@ -34,11 +34,10 @@ public class AwsWrappingHostedServiceTests(
         
         await using var context = await metadataContextFactory.CreateDbContextAsync();
         var metadata = await context.Metadata
-            .SingleOrDefaultAsync(x => x.ContextId == TestContextName);
+            .SingleAsync(x => x.ContextId == TestContextName);
 
-        metadata.Should().NotBeNull();
-        metadata!.ContextId.Should().Be(TestContextName);
-        metadata!.Key.Should().NotBeEmpty();
+        metadata.ContextId.Should().Be(TestContextName);
+        metadata.Key.Should().NotBeEmpty();
 
         InMemoryKeyStorage.Instance.ContainsKey(TestContextName).Should().BeTrue();
         InMemoryKeyStorage.Instance.GetKey(TestContextName).Should().NotBeEmpty();
