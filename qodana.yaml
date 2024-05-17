@@ -5,4 +5,4 @@ profile:
 dotnet:
   solution: EntityFrameworkCore.Encrypted.sln
 
-bootstrap: dotnet build, dotnet test /p:CollectCoverage=true /p:CoverletOutput=.qodana/code-coverage /p:CoverletOutputFormat=lcov
+bootstrap: dotnet restore, dotnet build, (dotnet test /p:CollectCoverage=true /p:CoverletOutput=.qodana/code-coverage /p:CoverletOutputFormat=lcov)
