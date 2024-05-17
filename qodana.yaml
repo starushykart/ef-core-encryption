@@ -2,4 +2,9 @@ version: "1.0"
 profile:
   name: qodana.recommended
 
-linter: jetbrains/qodana-dotnet:latest
+dotnet:
+  solution: EntityFrameworkCore.Encrypted.sln
+
+bootstrap: dotnet build, cd /tests/EntityFrameworkCore.Encrypted.IntegrationTests && \\
+  dotnet add package coverlet.msbuild && \\
+  ((dotnet test /p:CollectCoverage=true /p:CoverletOutput=src/EntityFrameworkCore.Encrypted/.qodana/code-coverage /p:CoverletOutputFormat=lcov))
