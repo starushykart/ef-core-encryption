@@ -5,6 +5,4 @@ profile:
 dotnet:
   solution: EntityFrameworkCore.Encrypted.sln
 
-bootstrap: dotnet build, cd /tests/EntityFrameworkCore.Encrypted.IntegrationTests && \\
-  dotnet add package coverlet.msbuild && \\
-  ((dotnet test /p:CollectCoverage=true /p:CoverletOutput=src/EntityFrameworkCore.Encrypted/.qodana/code-coverage /p:CoverletOutputFormat=lcov))
+bootstrap: dotnet build, dotnet test /p:CollectCoverage=true /p:CoverletOutput=.qodana/code-coverage /p:CoverletOutputFormat=lcov
