@@ -1,6 +1,9 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{F9ECB9FE-4C6E-4AD7-97BF-7BD5A6923A8D}"
+	ProjectSection(SolutionItems) = preProject
+		src\Directory.Build.props = src\Directory.Build.props
+	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EntityFrameworkCore.Encrypted", "src\EntityFrameworkCore.Encrypted\EntityFrameworkCore.Encrypted.csproj", "{BE9947D0-1230-48DE-9960-A956A203EBC2}"
 EndProject

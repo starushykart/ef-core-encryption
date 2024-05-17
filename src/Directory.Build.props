@@ -1,0 +1,21 @@
+<Project>
+    <PropertyGroup>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+    
+    <PropertyGroup>
+        <IsPackable>true</IsPackable>
+        <PublishRepositoryUrl>true</PublishRepositoryUrl>
+        <EnablePackageValidation>true</EnablePackageValidation>
+        <Authors>starushykart</Authors>
+        <Copyright>Copyright © 2024 Artem Starushyk</Copyright>
+        <Description>Application-side EF Core encryption</Description>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(GITHUB_ACTIONS)' == 'true'">
+        <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+        <DebugType>embedded</DebugType>
+    </PropertyGroup>
+    
+</Project>

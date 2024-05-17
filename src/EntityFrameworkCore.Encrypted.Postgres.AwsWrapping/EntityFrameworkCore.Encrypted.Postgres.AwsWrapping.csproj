@@ -1,13 +1,8 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <IsPackable>true</IsPackable>
         <TargetFramework>net8.0</TargetFramework>
-        <ImplicitUsings>enable</ImplicitUsings>
-        <Nullable>enable</Nullable>
         <Title>EntityFrameworkCore.Encrypted.Postgres.AwsWrapping</Title>
-        <Authors>starushykart</Authors>
-        <PackageId>EntityFrameworkCore.Encrypted.Postgres.AwsWrapping</PackageId>
     </PropertyGroup>
 
     <ItemGroup>
