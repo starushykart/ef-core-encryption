@@ -11,6 +11,7 @@
         <Authors>starushykart</Authors>
         <Copyright>Copyright © 2024 Artem Starushyk</Copyright>
         <Description>Application-side EF Core encryption</Description>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
     </PropertyGroup>
 
     <PropertyGroup Condition="'$(GITHUB_ACTIONS)' == 'true'">
