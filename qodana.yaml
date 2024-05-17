@@ -2,7 +2,8 @@ version: "1.0"
 profile:
   name: qodana.recommended
 
+linter: jetbrains/qodana-dotnet:latest
 dotnet:
   solution: EntityFrameworkCore.Encrypted.sln
 
-bootstrap: dotnet restore, dotnet build, (dotnet test /p:CollectCoverage=true /p:CoverletOutput=.qodana/code-coverage /p:CoverletOutputFormat=lcov)
+bootstrap: dotnet restore, dotnet build, ((dotnet test /p:CollectCoverage=true /p:CoverletOutput=.qodana/code-coverage /p:CoverletOutputFormat=lcov))
