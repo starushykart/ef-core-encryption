@@ -22,3 +22,7 @@ jobs:
         uses: JetBrains/qodana-action@v2024.1
         env:
           QODANA_TOKEN: ${{ secrets.QODANA_TOKEN }}
+          
+      - name: Qodana Scan Badge
+        uses: joaofouyer/qodana-action-badge@0.5.0
+            
