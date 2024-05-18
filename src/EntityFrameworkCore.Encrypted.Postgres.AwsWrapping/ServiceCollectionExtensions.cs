@@ -23,7 +23,7 @@ public static class ServiceCollectionExtensions
         awsWrappingOptionsAction(builder);
         var wrappingOptions = builder.Build();
 
-        services.TryAddSingleton<AwsWrappingOptions>(x => wrappingOptions);
+        services.TryAddSingleton(wrappingOptions);
         services.TryAddSingleton<IKeyStorage>(InMemoryKeyStorage.Instance);
         services.TryAddAWSService<IAmazonKeyManagementService>();
         services.AddHostedService<AwsKeyWrappingHostedService>();
