@@ -16,15 +16,15 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EntityFrameworkCore.Samples
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EntityFrameworkCore.Encrypted.Postgres.AwsWrapping", "src\EntityFrameworkCore.Encrypted.Postgres.AwsWrapping\EntityFrameworkCore.Encrypted.Postgres.AwsWrapping.csproj", "{685BD733-9C28-4505-8D9C-1F7D983398EA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EntityFrameworkCore.Encrypted.UnitTests", "tests\EntityFrameworkCore.Encrypted.UnitTests\EntityFrameworkCore.Encrypted.UnitTests.csproj", "{B67F1916-1803-416D-AD6A-575B937A866C}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EntityFrameworkCore.Encrypted.Tests.Postgres", "tests\EntityFrameworkCore.Encrypted.Tests.Postgres\EntityFrameworkCore.Encrypted.Tests.Postgres.csproj", "{B67F1916-1803-416D-AD6A-575B937A866C}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{7E4B3D42-7D8E-4103-A343-F7861BC78F2E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EntityFrameworkCore.Encrypted.IntegrationTests", "tests\EntityFrameworkCore.Encrypted.IntegrationTests\EntityFrameworkCore.Encrypted.IntegrationTests.csproj", "{443A83BF-55A2-4259-84E7-6E0DAA1B00FE}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EntityFrameworkCore.Encrypted.Tests.Postgres.AwsWrapping", "tests\EntityFrameworkCore.Encrypted.Tests.Postgres.AwsWrapping\EntityFrameworkCore.Encrypted.Tests.Postgres.AwsWrapping.csproj", "{443A83BF-55A2-4259-84E7-6E0DAA1B00FE}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EntityFrameworkCore.Samples.Encryption.Aes", "samples\EntityFrameworkCore.Samples.Encryption.Aes\EntityFrameworkCore.Samples.Encryption.Aes.csproj", "{E9D85F8C-FBF1-4805-9433-6ACD814DD91E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EntityFrameworkCore.Encrypted.Tests.Shared", "tests\EntityFrameworkCore.Encrypted.Tests.Shared\EntityFrameworkCore.Encrypted.Tests.Shared.csproj", "{D9750CB1-DC5E-4031-8FE9-FA88492F963A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EntityFrameworkCore.Encrypted.Tests.Postgres.Shared", "tests\EntityFrameworkCore.Encrypted.Tests.Postgres.Shared\EntityFrameworkCore.Encrypted.Tests.Postgres.Shared.csproj", "{D9750CB1-DC5E-4031-8FE9-FA88492F963A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

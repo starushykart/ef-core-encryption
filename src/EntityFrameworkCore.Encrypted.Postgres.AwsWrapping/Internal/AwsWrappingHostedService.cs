@@ -11,7 +11,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using Npgsql;
 
 namespace EntityFrameworkCore.Encrypted.Postgres.AwsWrapping.Internal;
@@ -21,14 +20,14 @@ internal class AwsKeyWrappingHostedService(
     IKeyStorage keyStorage,
     IAmazonKeyManagementService kmsService,
     IDbContextFactory<EncryptionMetadataContext> dbContextFactory,
-    IOptions<WrappingOptions> options,
+    AwsWrappingOptions wrappingOptions,
     ILogger<AwsKeyWrappingHostedService> logger) : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         var counter = 0;
         
-        while (!cancellationToken.IsCancellationRequested && counter < options.Value.MaxInitializationRetryCount)
+        while (!cancellationToken.IsCancellationRequested && counter < wrappingOptions.MaxInitializationRetryCount)
         {
             counter += 1;
 
@@ -80,7 +79,7 @@ internal class AwsKeyWrappingHostedService(
         var metadata = await context.Metadata
             .FirstOrDefaultAsync(x => x.ContextId == contextName, ct);
 
-        if (metadata == null && !options.Value.GenerateDataKeyIfNotExist)
+        if (metadata == null && !wrappingOptions.GenerateDataKeyIfNotExist)
         {
             throw new EntityFrameworkEncryptionException(
                 $"Data encryption key for {contextName} not found");
@@ -92,7 +91,7 @@ internal class AwsKeyWrappingHostedService(
         {
             dataKey = await DecryptAsync(metadata.Key, ct);
 
-            if (options.Value.ReEncryptDataKeyOnStart)
+            if (wrappingOptions.ReEncryptDataKeyOnStart)
             {
                 var reEncryptedDataKey = await EncryptAsync(dataKey, ct);
 
@@ -116,22 +115,13 @@ internal class AwsKeyWrappingHostedService(
 
         keyStorage.AddKey(contextName, dataKey);
     }
-
-    private async Task VerifyAsync(byte[] decryptedKey, byte[] reEncryptedDataKey, CancellationToken ct)
-    {
-        var verificationDecryptedKey = await DecryptAsync(reEncryptedDataKey, ct);
-        var verified = decryptedKey.SequenceEqual(verificationDecryptedKey);
-
-        if (!verified)
-            throw new EntityFrameworkEncryptionException("Original data key not the same as re-encrypted");
-    }
     
     private async Task<byte[]> DecryptAsync(byte[] key, CancellationToken ct)
     {
         var decryptRequest = new DecryptRequest
         {
             CiphertextBlob = new MemoryStream(key),
-            KeyId = options.Value.WrappingKeyArn,
+            KeyId = wrappingOptions.WrappingKeyArn,
         };
         var response = await kmsService.DecryptAsync(decryptRequest, ct);
         
@@ -146,7 +136,7 @@ internal class AwsKeyWrappingHostedService(
         var decryptRequest = new EncryptRequest
         {
             Plaintext = new MemoryStream(key),
-            KeyId = options.Value.WrappingKeyArn,
+            KeyId = wrappingOptions.WrappingKeyArn,
         };
         var response = await kmsService.EncryptAsync(decryptRequest, ct);
         
@@ -154,6 +144,15 @@ internal class AwsKeyWrappingHostedService(
         await response.CiphertextBlob.DisposeAsync();
         
         return result;
+    }
+    
+    private async Task VerifyAsync(byte[] decryptedKey, byte[] reEncryptedDataKey, CancellationToken ct)
+    {
+        var verificationDecryptedKey = await DecryptAsync(reEncryptedDataKey, ct);
+        var verified = decryptedKey.SequenceEqual(verificationDecryptedKey);
+
+        if (!verified)
+            throw new EntityFrameworkEncryptionException("Original data key not the same as re-encrypted");
     }
     
     private async Task<(byte[] encrypted, byte[] decrypted)> GenerateDataKeyAsync(EncryptionType encryptionType, CancellationToken ct)
@@ -167,7 +166,7 @@ internal class AwsKeyWrappingHostedService(
 
         var request = new GenerateDataKeyRequest
         {
-            KeyId = options.Value.WrappingKeyArn,
+            KeyId = wrappingOptions.WrappingKeyArn,
             KeySpec = spec,
             EncryptionContext = new AutoConstructedDictionary<string, string>()
         };

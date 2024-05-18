@@ -1,6 +1,5 @@
 using Amazon.KeyManagementService;
 using EntityFrameworkCore.Encrypted.Postgres.AwsWrapping;
-using EntityFrameworkCore.Encrypted.Postgres.AwsWrapping.Common;
 using EntityFrameworkCore.Samples.Encryption.AesWrapping.Common;
 using EntityFrameworkCore.Samples.Encryption.AesWrapping.Database;
 using Microsoft.EntityFrameworkCore;
