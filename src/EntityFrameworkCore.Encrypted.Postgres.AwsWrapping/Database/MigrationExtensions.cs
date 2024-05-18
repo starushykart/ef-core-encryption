@@ -11,7 +11,4 @@ public static class MigrationExtensions
         await using var context = await factory.CreateDbContextAsync(cancellationToken);
         await context.Database.MigrateAsync(cancellationToken);
     }
-
-    public static Task MigrateEncryptionContextAsync(IServiceScope scope, CancellationToken cancellationToken = default)
-        => scope.ServiceProvider.MigrateEncryptionContextAsync(cancellationToken);
 }

@@ -13,7 +13,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 
-namespace EntityFrameworkCore.Encrypted.Postgres.AwsWrapping.Internal;
+namespace EntityFrameworkCore.Encrypted.Postgres.AwsWrapping.Services;
 
 internal class AwsKeyWrappingHostedService(
     IServiceScopeFactory scopeProvider,
@@ -35,20 +35,11 @@ internal class AwsKeyWrappingHostedService(
             {
                 await using var scope = scopeProvider.CreateAsyncScope();
 
-                var registeredDbContexts = scope.ServiceProvider
-                    .GetServices<DbContextOptions>()
-                    .Where(x => x.FindExtension<EncryptionDbContextOptionsExtension>() != null)
-                    .Select(x => new
-                    {
-                        x.ContextType.Name,
-                        x.GetExtension<EncryptionDbContextOptionsExtension>().EncryptionType
-                    });
-
-                foreach (var context in registeredDbContexts)
+                foreach (var info in scope.ServiceProvider.GetEncryptionInfo())
                 {
-                    await InitializeDataKeyAsync(context.Name, context.EncryptionType, cancellationToken);
+                    await InitializeDataKeyAsync(info.ContextName, info.EncryptionType, cancellationToken);
                     
-                    logger.LogInformation("Data encryption key for {Context} initialized successfully", context.Name);
+                    logger.LogInformation("Data encryption key for {Context} initialized successfully", info.ContextName);
                 }
 
                 return;
@@ -56,7 +47,7 @@ internal class AwsKeyWrappingHostedService(
             catch (DbUpdateException ex) when (ex.InnerException is DbException { SqlState: PostgresErrorCodes.UniqueViolation })
             {
                 // simultaneous creation may rarely occur when multiple instances of the same service
-                // trying to created data key for the very first time if it is not exists
+                // trying to created data key for the very first time if it is not exists in the database
                 // should be ignored and retried
             }
 

@@ -1,6 +1,8 @@
 using System.Diagnostics.CodeAnalysis;
+using EntityFrameworkCore.Encrypted.Common;
 using EntityFrameworkCore.Encrypted.Common.Exceptions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Infrastructure.Internal;
 
 namespace EntityFrameworkCore.Encrypted.Postgres.AwsWrapping.Common;
@@ -22,4 +24,14 @@ internal static class Utils
 
         return connectionString;
     }
+
+    internal static IEnumerable<(string ContextName, EncryptionType EncryptionType)> GetEncryptionInfo(this IServiceProvider provider)
+        => provider
+            .GetServices<DbContextOptions>()
+            .Where(x => x.FindExtension<EncryptionDbContextOptionsExtension>() != null)
+            .Select(x =>
+            (
+                x.ContextType.Name,
+                x.GetExtension<EncryptionDbContextOptionsExtension>().EncryptionType
+            ));
 }
