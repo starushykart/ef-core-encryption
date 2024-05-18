@@ -23,5 +23,6 @@ public static class TestsExtensions
             throw new TestClassException($"Cannot resolve {nameof(AwsKeyWrappingHostedService)}");
         
         await wrappingService.StartAsync(CancellationToken.None);
+        await wrappingService.StopAsync(CancellationToken.None);
     }
 }
