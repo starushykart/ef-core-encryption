@@ -1,7 +1,7 @@
 using Amazon.KeyManagementService;
 using Amazon.Runtime;
 using EntityFrameworkCore.Encrypted.Postgres.AwsWrapping.Internal;
-using EntityFrameworkCore.Encrypted.Tests.Postgres.Shared.Fixtures;
+using EntityFrameworkCore.Encrypted.Tests.Postgres.AwsWrapping.Common.Fixtures;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Xunit.Sdk;

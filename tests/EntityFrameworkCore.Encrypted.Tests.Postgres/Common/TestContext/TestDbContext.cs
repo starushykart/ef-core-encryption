@@ -1,7 +1,7 @@
 using EntityFrameworkCore.Encrypted.Annotations;
 using Microsoft.EntityFrameworkCore;
 
-namespace EntityFrameworkCore.Encrypted.Tests.Postgres.Shared.TestContext;
+namespace EntityFrameworkCore.Encrypted.Tests.Postgres.Common.TestContext;
 
 public sealed class TestDbContext(DbContextOptions<TestDbContext> options): DbContext(options)
 {

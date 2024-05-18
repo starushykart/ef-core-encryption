@@ -1,9 +1,9 @@
 using System.ComponentModel;
 using EntityFrameworkCore.Encrypted.Tests.Postgres.Common;
-using EntityFrameworkCore.Encrypted.Tests.Postgres.Shared;
-using EntityFrameworkCore.Encrypted.Tests.Postgres.Shared.Extensions;
-using EntityFrameworkCore.Encrypted.Tests.Postgres.Shared.Fixtures;
-using EntityFrameworkCore.Encrypted.Tests.Postgres.Shared.TestContext;
+using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Extensions;
+using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Fixtures;
+using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Shared;
+using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.TestContext;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;

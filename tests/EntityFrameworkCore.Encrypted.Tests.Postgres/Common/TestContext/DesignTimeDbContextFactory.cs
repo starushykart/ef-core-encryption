@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 
-namespace EntityFrameworkCore.Encrypted.Tests.Postgres.Shared.TestContext;
+namespace EntityFrameworkCore.Encrypted.Tests.Postgres.Common.TestContext;
 
 internal sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<TestDbContext>
 {

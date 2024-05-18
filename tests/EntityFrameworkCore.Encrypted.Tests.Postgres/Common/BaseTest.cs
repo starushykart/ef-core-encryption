@@ -1,6 +1,7 @@
-using EntityFrameworkCore.Encrypted.Tests.Postgres.Shared;
-using EntityFrameworkCore.Encrypted.Tests.Postgres.Shared.Extensions;
-using EntityFrameworkCore.Encrypted.Tests.Postgres.Shared.Fixtures;
+using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Extensions;
+using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Fixtures;
+using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Shared;
+using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.TestContext;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -10,5 +11,5 @@ namespace EntityFrameworkCore.Encrypted.Tests.Postgres.Common;
 public abstract class BaseTest(PostgresContainerFixture postgres, ITestOutputHelper helper, bool useFactory) : BaseSharedTest(postgres, helper)
 {
     protected override Task MigrateAsync(IServiceProvider provider)
-        => provider.MigrateTestContextAsync(useFactory);
+        => provider.MigrateContextAsync<TestDbContext>(useFactory);
 }

@@ -1,6 +1,6 @@
 using System.Security.Cryptography;
 
-namespace EntityFrameworkCore.Encrypted.Tests.Postgres.Shared;
+namespace EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Shared;
 
 public static class TestUtils
 {

@@ -1,14 +1,15 @@
 using System.ComponentModel;
 using EntityFrameworkCore.Encrypted.Postgres.AwsWrapping;
-using EntityFrameworkCore.Encrypted.Tests.Postgres.AwsWrapping.Common;
 using EntityFrameworkCore.Encrypted.Tests.Postgres.AwsWrapping.Common.Extensions;
-using EntityFrameworkCore.Encrypted.Tests.Postgres.Shared;
-using EntityFrameworkCore.Encrypted.Tests.Postgres.Shared.Extensions;
-using EntityFrameworkCore.Encrypted.Tests.Postgres.Shared.Fixtures;
-using EntityFrameworkCore.Encrypted.Tests.Postgres.Shared.TestContext;
+using EntityFrameworkCore.Encrypted.Tests.Postgres.AwsWrapping.Common.Fixtures;
+using EntityFrameworkCore.Encrypted.Tests.Postgres.Common;
+using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Extensions;
+using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Fixtures;
+using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.TestContext;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit.Abstractions;
+using BaseTest = EntityFrameworkCore.Encrypted.Tests.Postgres.AwsWrapping.Common.BaseTest;
 
 namespace EntityFrameworkCore.Encrypted.Tests.Postgres.AwsWrapping.ConfigScenarios;
 

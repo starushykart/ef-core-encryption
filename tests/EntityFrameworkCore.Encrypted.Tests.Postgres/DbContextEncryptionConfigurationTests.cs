@@ -2,7 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using EntityFrameworkCore.Encrypted.Annotations;
 using EntityFrameworkCore.Encrypted.Common.Exceptions;
 using EntityFrameworkCore.Encrypted.Common.Plugin;
-using EntityFrameworkCore.Encrypted.Tests.Postgres.Shared;
+using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Shared;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;

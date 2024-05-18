@@ -17,6 +17,7 @@
           <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.9.0" />
+        <PackageReference Include="Testcontainers.LocalStack" Version="3.8.0" />
         <PackageReference Include="xunit" Version="2.8.0" />
         <PackageReference Include="xunit.runner.visualstudio" Version="2.8.0">
           <PrivateAssets>all</PrivateAssets>
@@ -30,7 +31,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\..\src\EntityFrameworkCore.Encrypted.Postgres.AwsWrapping\EntityFrameworkCore.Encrypted.Postgres.AwsWrapping.csproj" />
-      <ProjectReference Include="..\EntityFrameworkCore.Encrypted.Tests.Postgres.Shared\EntityFrameworkCore.Encrypted.Tests.Postgres.Shared.csproj" />
+      <ProjectReference Include="..\EntityFrameworkCore.Encrypted.Tests.Postgres\EntityFrameworkCore.Encrypted.Tests.Postgres.csproj" />
     </ItemGroup>
 
 </Project>

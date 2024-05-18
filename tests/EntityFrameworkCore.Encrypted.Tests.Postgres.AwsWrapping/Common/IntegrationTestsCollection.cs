@@ -1,4 +1,5 @@
-using EntityFrameworkCore.Encrypted.Tests.Postgres.Shared.Fixtures;
+using EntityFrameworkCore.Encrypted.Tests.Postgres.AwsWrapping.Common.Fixtures;
+using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Fixtures;
 
 namespace EntityFrameworkCore.Encrypted.Tests.Postgres.AwsWrapping.Common;
 

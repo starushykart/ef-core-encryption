@@ -1,13 +1,13 @@
 using EntityFrameworkCore.Encrypted.Providers;
-using EntityFrameworkCore.Encrypted.Tests.Postgres.Shared.Extensions;
-using EntityFrameworkCore.Encrypted.Tests.Postgres.Shared.Fixtures;
+using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Extensions;
+using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Fixtures;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Respawn;
 using Xunit;
 using Xunit.Abstractions;
 
-namespace EntityFrameworkCore.Encrypted.Tests.Postgres.Shared;
+namespace EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Shared;
 
 public abstract class BaseSharedTest(PostgresContainerFixture postgres, ITestOutputHelper helper): IAsyncLifetime
 {

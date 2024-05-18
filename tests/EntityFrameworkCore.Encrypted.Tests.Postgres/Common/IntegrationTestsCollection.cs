@@ -1,4 +1,4 @@
-using EntityFrameworkCore.Encrypted.Tests.Postgres.Shared.Fixtures;
+using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Fixtures;
 using Xunit;
 
 namespace EntityFrameworkCore.Encrypted.Tests.Postgres.Common;

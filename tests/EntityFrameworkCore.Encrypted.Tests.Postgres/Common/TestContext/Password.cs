@@ -1,7 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using EntityFrameworkCore.Encrypted.Annotations;
 
-namespace EntityFrameworkCore.Encrypted.Tests.Postgres.Shared.TestContext;
+namespace EntityFrameworkCore.Encrypted.Tests.Postgres.Common.TestContext;
 
 public class Password
 {

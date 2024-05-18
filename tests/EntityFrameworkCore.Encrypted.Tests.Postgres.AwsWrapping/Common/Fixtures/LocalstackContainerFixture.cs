@@ -1,7 +1,6 @@
 using Testcontainers.LocalStack;
-using Xunit;
 
-namespace EntityFrameworkCore.Encrypted.Tests.Postgres.Shared.Fixtures;
+namespace EntityFrameworkCore.Encrypted.Tests.Postgres.AwsWrapping.Common.Fixtures;
 
 public class LocalstackContainerFixture : IAsyncLifetime
 {

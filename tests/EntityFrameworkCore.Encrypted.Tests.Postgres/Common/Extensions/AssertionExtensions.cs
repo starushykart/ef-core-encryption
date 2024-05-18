@@ -1,7 +1,7 @@
-using EntityFrameworkCore.Encrypted.Tests.Postgres.Shared.TestContext;
+using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.TestContext;
 using FluentAssertions;
 
-namespace EntityFrameworkCore.Encrypted.Tests.Postgres.Shared.Extensions;
+namespace EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Extensions;
 
 public static class AssertionExtensions
 {

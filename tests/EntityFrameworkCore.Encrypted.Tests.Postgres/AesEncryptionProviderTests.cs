@@ -1,7 +1,7 @@
 using System.Text;
 using Bogus;
 using EntityFrameworkCore.Encrypted.Providers;
-using EntityFrameworkCore.Encrypted.Tests.Postgres.Shared;
+using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Shared;
 using FluentAssertions;
 using Xunit;
 

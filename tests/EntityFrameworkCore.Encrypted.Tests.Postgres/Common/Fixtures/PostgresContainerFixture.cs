@@ -1,7 +1,7 @@
 using Testcontainers.PostgreSql;
 using Xunit;
 
-namespace EntityFrameworkCore.Encrypted.Tests.Postgres.Shared.Fixtures;
+namespace EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Fixtures;
 
 public class PostgresContainerFixture : IAsyncLifetime
 {

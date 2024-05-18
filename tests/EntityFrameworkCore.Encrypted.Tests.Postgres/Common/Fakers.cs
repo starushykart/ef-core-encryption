@@ -1,7 +1,7 @@
 using Bogus;
-using EntityFrameworkCore.Encrypted.Tests.Postgres.Shared.TestContext;
+using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.TestContext;
 
-namespace EntityFrameworkCore.Encrypted.Tests.Postgres.Shared;
+namespace EntityFrameworkCore.Encrypted.Tests.Postgres.Common;
 
 public static class Fakers
 {
