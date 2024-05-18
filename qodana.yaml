@@ -5,5 +5,3 @@ profile:
 linter: jetbrains/qodana-dotnet:latest
 dotnet:
   solution: EntityFrameworkCore.Encrypted.sln
-
-bootstrap: dotnet restore, dotnet build, ((dotnet test /p:CollectCoverage=true /p:CoverletOutput=.qodana/code-coverage /p:CoverletOutputFormat=lcov))
