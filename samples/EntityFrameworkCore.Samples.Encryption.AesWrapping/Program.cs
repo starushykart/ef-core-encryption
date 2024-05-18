@@ -26,7 +26,7 @@ if (true)
     // 1 approach
     builder.Services.AddAwsAesDataKeyWrapping(
         builder.Configuration.GetValue<string>("Database:ConnectionString")!,
-        x => x.WithKeyArn(builder.Configuration.GetValue<string>("Database:WrappingKeyId")));
+        x => x.WithKeyArn(builder.Configuration.GetValue<string>("Database:WrappingKeyId")!));
     
     builder.Services.AddDbContext<EncryptedWrappedDbContext>(
         x => x
@@ -41,7 +41,7 @@ else
         x => x
             .UseNpgsql(builder.Configuration.GetValue<string>("Database:ConnectionString"))
             .UseAes256Encryption(),
-        x=> x.WithKeyArn(builder.Configuration.GetValue<string>("Database:WrappingKeyId")));
+        x=> x.WithKeyArn(builder.Configuration.GetValue<string>("Database:WrappingKeyId")!));
 }
 #pragma warning restore CS0162 // Unreachable code detected
 

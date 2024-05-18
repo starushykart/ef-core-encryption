@@ -7,8 +7,8 @@ using Xunit.Abstractions;
 namespace EntityFrameworkCore.Encrypted.Tests.Postgres.Common;
 
 [Collection(nameof(IntegrationTestsCollection))]
-public abstract class BaseTest(PostgresContainerFixture postgres, ITestOutputHelper helper) : BaseSharedTest(postgres, helper)
+public abstract class BaseTest(PostgresContainerFixture postgres, ITestOutputHelper helper, bool useFactory) : BaseSharedTest(postgres, helper)
 {
     protected override Task MigrateAsync(IServiceProvider provider)
-        => provider.MigrateTestContextAsync();
+        => provider.MigrateTestContextAsync(useFactory);
 }

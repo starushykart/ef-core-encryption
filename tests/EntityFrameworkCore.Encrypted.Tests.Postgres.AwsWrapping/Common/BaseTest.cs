@@ -7,11 +7,11 @@ using Xunit.Abstractions;
 namespace EntityFrameworkCore.Encrypted.Tests.Postgres.AwsWrapping.Common;
 
 [Collection(nameof(IntegrationTestsCollection))]
-public abstract class BaseTest(PostgresContainerFixture postgres, ITestOutputHelper helper) : BaseSharedTest(postgres, helper)
+public abstract class BaseTest(PostgresContainerFixture postgres, ITestOutputHelper helper, bool useFactory) : BaseSharedTest(postgres, helper)
 {
-    protected override async  Task MigrateAsync(IServiceProvider provider)
+    protected override async Task MigrateAsync(IServiceProvider provider)
     {
         await provider.MigrateEncryptionContextAsync();
-        await provider.MigrateTestContextAsync();
+        await provider.MigrateTestContextAsync(useFactory);
     }
 }

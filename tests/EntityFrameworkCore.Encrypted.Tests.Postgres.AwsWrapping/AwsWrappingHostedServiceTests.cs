@@ -3,13 +3,11 @@ using EntityFrameworkCore.Encrypted.Postgres.AwsWrapping;
 using EntityFrameworkCore.Encrypted.Postgres.AwsWrapping.Database;
 using EntityFrameworkCore.Encrypted.Providers;
 using EntityFrameworkCore.Encrypted.Tests.Postgres.AwsWrapping.Common;
-using EntityFrameworkCore.Encrypted.Tests.Postgres.Shared;
 using EntityFrameworkCore.Encrypted.Tests.Postgres.Shared.Fixtures;
 using EntityFrameworkCore.Encrypted.Tests.Postgres.Shared.TestContext;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Xunit.Abstractions;
 
 namespace EntityFrameworkCore.Encrypted.Tests.Postgres.AwsWrapping;
@@ -18,7 +16,7 @@ public class AwsWrappingHostedServiceTests(
     LocalstackContainerFixture localstack,
     PostgresContainerFixture postgres,
     ITestOutputHelper helper) :
-    BaseTest(postgres, helper)
+    BaseTest(postgres, helper, false)
 {
     private const string TestContextName = nameof(TestDbContext);
     

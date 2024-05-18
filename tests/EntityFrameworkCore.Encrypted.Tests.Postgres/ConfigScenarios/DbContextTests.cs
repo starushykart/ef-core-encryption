@@ -12,7 +12,7 @@ using Xunit.Abstractions;
 namespace EntityFrameworkCore.Encrypted.Tests.Postgres.ConfigScenarios;
 
 [Description("Testing encryption when db context configured with AddDbContext")]
-public class DbContextTests(PostgresContainerFixture postgres, ITestOutputHelper helper) : BaseTest(postgres, helper)
+public class DbContextTests(PostgresContainerFixture postgres, ITestOutputHelper helper) : BaseTest(postgres, helper, false)
 {
     [Fact]
     public async Task Should_encrypt_and_decrypt_successfully()

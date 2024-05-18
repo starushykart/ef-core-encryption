@@ -16,7 +16,7 @@ namespace EntityFrameworkCore.Encrypted.Tests.Postgres.AwsWrapping.ConfigScenari
 public class DbContextPooledTests(
     PostgresContainerFixture postgres,
     LocalstackContainerFixture localstack,
-    ITestOutputHelper helper) : BaseTest(postgres, helper)
+    ITestOutputHelper helper) : BaseTest(postgres, helper, false)
 {
     [Fact]
     public async Task Should_encrypt_and_decrypt_successfully()
