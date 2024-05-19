@@ -48,8 +48,10 @@ public class AwsWrappingHostedServiceTests(
     [Fact]
     public async Task Should_re_encrypt_data_key()
     {
+        // run hosted service to init data key in the database
         await Provider.RunAwsWrappingHostedServiceAsync();
         InMemoryKeyStorage.Instance.Clear();
+        
         await Provider.RunAwsWrappingHostedServiceAsync();
 
         var metadataContextFactory = Provider.GetRequiredService<IDbContextFactory<EncryptionMetadataContext>>();
