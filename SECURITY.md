@@ -3,7 +3,7 @@
 ## Supported Versions
 
 Entity Framework Core Encrypted supports the current major version only.
-If issues or vulnerabilities are encountered with previous versions for which there is no workaround, upgrading to the latest version if recommended.
+If issues or vulnerabilities are encountered with previous versions for which there is no workaround, upgrading to the latest version is recommended.
 
 | Version | Supported          |
 | ------- | ------------------ |
