@@ -6,10 +6,11 @@ using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddHostedService<MigrationHostedService>();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+builder.Services.AddHostedService<MigrationHostedService>();
 
 builder.Services.AddSingleton<IAmazonKeyManagementService>(new AmazonKeyManagementServiceClient(
     new AmazonKeyManagementServiceConfig
@@ -28,7 +29,7 @@ if (true)
         builder.Configuration.GetValue<string>("Database:ConnectionString")!,
         x => x.WithKeyArn(builder.Configuration.GetValue<string>("Database:WrappingKeyId")!));
     
-    builder.Services.AddDbContext<EncryptedWrappedDbContext>(
+    builder.Services.AddDbContext<EncryptedDbContext>(
         x => x
             .UseNpgsql(builder.Configuration.GetValue<string>("Database:ConnectionString"))
             .UseAes256Encryption());
@@ -37,7 +38,7 @@ else
 #pragma warning disable CS0162 // Unreachable code detected
 {
     // 2 approach
-    builder.Services.AddDbContext<EncryptedWrappedDbContext>(
+    builder.Services.AddDbContext<EncryptedDbContext>(
         x => x
             .UseNpgsql(builder.Configuration.GetValue<string>("Database:ConnectionString"))
             .UseAes256Encryption(),
@@ -52,11 +53,11 @@ app.UseSwagger();
 app.UseSwaggerUI();
 app.UseHttpsRedirection();
 
-app.MapGet("/passwords", (EncryptedWrappedDbContext context, CancellationToken ct)
+app.MapGet("/passwords", (EncryptedDbContext context, CancellationToken ct)
         => context.EncryptedWrappedPasswords.ToListAsync(ct))
     .WithOpenApi();
 
-app.MapPost("/passwords", async (string password, EncryptedWrappedDbContext context, CancellationToken ct) =>
+app.MapPost("/passwords", async (string password, EncryptedDbContext context, CancellationToken ct) =>
     {
         context.Add(new PasswordWithEncryptionWrapping
         {

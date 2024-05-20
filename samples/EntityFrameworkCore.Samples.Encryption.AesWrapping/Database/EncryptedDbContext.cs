@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace EntityFrameworkCore.Samples.Encryption.AesWrapping.Database;
 
-public sealed class EncryptedWrappedDbContext(DbContextOptions<EncryptedWrappedDbContext> options) : DbContext(options)
+public sealed class EncryptedDbContext(DbContextOptions<EncryptedDbContext> options) : DbContext(options)
 {
     public DbSet<PasswordWithEncryptionWrapping> EncryptedWrappedPasswords => Set<PasswordWithEncryptionWrapping>();
 

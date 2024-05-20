@@ -20,12 +20,6 @@
     </ItemGroup>
 
     <ItemGroup>
-      <Content Include="..\..\.dockerignore">
-        <Link>.dockerignore</Link>
-      </Content>
-    </ItemGroup>
-
-    <ItemGroup>
       <ProjectReference Include="..\..\src\EntityFrameworkCore.Encrypted.Postgres.AwsWrapping\EntityFrameworkCore.Encrypted.Postgres.AwsWrapping.csproj" />
     </ItemGroup>
 

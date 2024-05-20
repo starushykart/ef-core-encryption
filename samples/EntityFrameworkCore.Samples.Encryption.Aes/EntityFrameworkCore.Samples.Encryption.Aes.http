@@ -1,6 +1,0 @@
-@EntityFrameworkCore.Samples.Encryption.Aes_HostAddress = http://localhost:5152
-
-GET {{EntityFrameworkCore.Samples.Encryption.Aes_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###

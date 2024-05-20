@@ -11,7 +11,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 namespace EntityFrameworkCore.Samples.Encryption.AesWrapping.Database.Migrations
 {
-    [DbContext(typeof(EncryptedWrappedDbContext))]
+    [DbContext(typeof(EncryptedDbContext))]
     [Migration("20240419115650_Init")]
     partial class Init
     {

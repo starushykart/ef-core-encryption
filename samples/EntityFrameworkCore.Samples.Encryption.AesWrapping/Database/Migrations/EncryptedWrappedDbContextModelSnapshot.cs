@@ -10,7 +10,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 namespace EntityFrameworkCore.Samples.Encryption.AesWrapping.Database.Migrations
 {
-    [DbContext(typeof(EncryptedWrappedDbContext))]
+    [DbContext(typeof(EncryptedDbContext))]
     partial class EncryptedWrappedDbContextModelSnapshot : ModelSnapshot
     {
         protected override void BuildModel(ModelBuilder modelBuilder)

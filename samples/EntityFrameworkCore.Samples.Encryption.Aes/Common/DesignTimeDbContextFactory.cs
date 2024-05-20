@@ -1,9 +1,9 @@
 using EntityFrameworkCore.Encrypted;
-using EntityFrameworkCore.Samples.Encryption.AesWrapping.Database;
+using EntityFrameworkCore.Samples.Encryption.Aes.Database;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 
-namespace EntityFrameworkCore.Samples.Encryption.AesWrapping.Common;
+namespace EntityFrameworkCore.Samples.Encryption.Aes.Common;
 
 internal class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<EncryptedDbContext>
 {
