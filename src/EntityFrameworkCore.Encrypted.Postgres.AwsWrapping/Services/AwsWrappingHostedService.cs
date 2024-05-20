@@ -25,36 +25,34 @@ internal class AwsKeyWrappingHostedService(
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        var counter = 0;
-        
-        while (!cancellationToken.IsCancellationRequested && counter < wrappingOptions.MaxInitializationRetryCount)
+        await using var scope = scopeProvider.CreateAsyncScope();
+
+        foreach (var info in scope.ServiceProvider.GetEncryptionInfo())
         {
-            counter += 1;
-
-            try
+            do
             {
-                await using var scope = scopeProvider.CreateAsyncScope();
-
-                foreach (var info in scope.ServiceProvider.GetEncryptionInfo())
+                try
                 {
                     await InitializeDataKeyAsync(info.ContextName, info.EncryptionType, cancellationToken);
-                    
+
                     logger.LogInformation("Data encryption key for {Context} initialized successfully", info.ContextName);
+                    
+                    break;
                 }
-
-                return;
-            }
-            catch (DbUpdateException ex) when (ex.InnerException is DbException { SqlState: PostgresErrorCodes.UniqueViolation })
-            {
-                // simultaneous creation may rarely occur when multiple instances of the same service
-                // trying to created data key for the very first time if it is not exists in the database
-                // should be ignored and retried
-            }
-
-            await Task.Delay(TimeSpan.FromSeconds(3), cancellationToken);
+                catch (DbUpdateException ex) when (ex.InnerException is DbException { SqlState: PostgresErrorCodes.UniqueViolation })
+                {
+                    // simultaneous data key creation may rarely occur when multiple instances of the same service
+                    // trying to created data key for the very first time if it is not exists in the database
+                    // should be ignored and retried
+                    logger.LogWarning("Concurrent key creation for {Context}. Retrying ...", info.ContextName);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Data encryption key for {Context} initialization failed", info.ContextName);
+                    throw;
+                }
+            } while (!cancellationToken.IsCancellationRequested);
         }
-
-        throw new EntityFrameworkEncryptionException("Encryption key storage cannot be initialized");
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
