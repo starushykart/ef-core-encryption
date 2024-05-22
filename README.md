@@ -5,6 +5,13 @@
 [![Qodana](https://github.com/starushykart/ef-core-encryption/actions/workflows/code_quality.yml/badge.svg)](https://github.com/starushykart/ef-core-encryption/actions/workflows/code_quality.yml)
 [![codecov](https://codecov.io/github/starushykart/ef-core-encryption/graph/badge.svg?token=C1JOFN38GC)](https://codecov.io/github/starushykart/ef-core-encryption)
 
+## Disclaimer
+This project is an extension of [Microsoft Entity Framework Core](https://github.com/aspnet/EntityFrameworkCore) that adds support for encrypted properties using built-in or custom encryption providers.  
+  
+The authors **do not accept any responsibility** if you use or deploy this in a production environment and lose your encryption key or corrupt your data. Users are advised to thoroughly test and validate the implementation before using it in any production environment.
+  
+By using or contributing to this repository, you agree to follow its terms.
+
 ## NuGet
 |                                                    |      |                                                                                                                                                                                         |                                                                                                                                                                                             |
 |----------------------------------------------------|:----:|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------:|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------:|
