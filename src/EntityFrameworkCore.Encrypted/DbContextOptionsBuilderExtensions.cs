@@ -8,15 +8,18 @@ namespace EntityFrameworkCore.Encrypted;
 
 public static class DbContextOptionsBuilderExtensions
 {
-    public static DbContextOptionsBuilder UseAes256Encryption(this DbContextOptionsBuilder optionsBuilder, string keyBase64)
+    public static DbContextOptionsBuilder UseAes256Encryption(this DbContextOptionsBuilder optionsBuilder, byte[] key)
     {
-        InMemoryKeyStorage.Instance.AddKey(optionsBuilder.Options.ContextType.Name, Convert.FromBase64String(keyBase64));
+        InMemoryKeyStorage.Instance.AddKey(optionsBuilder.Options.ContextType.Name, key);
 
         var keyProvider = new InMemoryKeyProvider(InMemoryKeyStorage.Instance, optionsBuilder.Options.ContextType.Name);
         var encryptionProvider = new Aes256EncryptionProvider(keyProvider);
 
         return optionsBuilder.UseEncryption(encryptionProvider);
     }
+    
+    public static DbContextOptionsBuilder UseAes256Encryption(this DbContextOptionsBuilder optionsBuilder, string keyBase64) 
+        => optionsBuilder.UseAes256Encryption(Convert.FromBase64String(keyBase64));
     
     public static DbContextOptionsBuilder UseEncryption(this DbContextOptionsBuilder optionsBuilder, IEncryptionProvider encryptionProvider)
     {

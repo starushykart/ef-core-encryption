@@ -32,7 +32,7 @@ internal sealed class EncryptionConverter(IEncryptionProvider encryptionProvider
         var decryptedBytes = encryptionProvider.Decrypt(inputData);
 
         return decryptedBytes == null || decryptedBytes.Length == 0
-            ? default!
+            ? null
             : Encoding.UTF8.GetString(decryptedBytes).Trim(NullChar);
     }
 }
