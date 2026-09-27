@@ -18,10 +18,32 @@ namespace EntityFrameworkCore.Samples.Encryption.Aes.Database.Migrations
 #pragma warning disable 612, 618
             modelBuilder
                 .HasDefaultSchema("public")
-                .HasAnnotation("ProductVersion", "8.0.5")
+                .HasAnnotation("ProductVersion", "10.0.12")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+            modelBuilder.Entity("EntityFrameworkCore.Encrypted.Common.Storage.EncryptionKeyEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<byte[]>("WrappedKey")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("WrappingKeyId")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("__EncryptionKeys", "public");
+                });
 
             modelBuilder.Entity("EntityFrameworkCore.Samples.Encryption.Aes.Database.PasswordWithEncryption", b =>
                 {
@@ -31,13 +53,11 @@ namespace EntityFrameworkCore.Samples.Encryption.Aes.Database.Migrations
 
                     b.Property<string>("EncryptedAttribute")
                         .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
+                        .HasColumnType("text");
 
                     b.Property<string>("EncryptedFluent")
                         .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
+                        .HasColumnType("text")
                         .HasAnnotation("Microsoft.EntityFrameworkCore.Encrypted.IsEncrypted", true);
 
                     b.Property<string>("Original")

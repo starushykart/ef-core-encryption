@@ -33,8 +33,8 @@ jobs:
     - name: Pack EntityFrameworkCore.Encrypted
       run: dotnet pack src/EntityFrameworkCore.Encrypted -c Release --no-build --output . /p:PackageVersion=$VERSION
 
-    - name: Pack EntityFrameworkCore.Encrypted.Postgres.AwsWrapping
-      run: dotnet pack src/EntityFrameworkCore.Encrypted.Postgres.AwsWrapping -c Release --no-build --output . /p:PackageVersion=$VERSION
+    - name: Pack EntityFrameworkCore.Encrypted.AwsKms
+      run: dotnet pack src/EntityFrameworkCore.Encrypted.AwsKms -c Release --no-build --output . /p:PackageVersion=$VERSION
 
     - name: Push to NuGet packages
       run: dotnet nuget push "*.nupkg" --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json

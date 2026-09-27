@@ -14,6 +14,7 @@ public static class Fakers
                 Id = f.Random.Guid(),
                 EncryptedFluent = passwordValue,
                 EncryptedAttribute = passwordValue,
+                EncryptedBinary = f.Random.Bytes(32),
                 Original = passwordValue
             };
         });

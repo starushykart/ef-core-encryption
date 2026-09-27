@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <Title>EntityFrameworkCore.Encrypted.AwsKms</Title>
+        <Description>AWS KMS envelope encryption for EntityFrameworkCore.Encrypted</Description>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\EntityFrameworkCore.Encrypted\EntityFrameworkCore.Encrypted.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="AWSSDK.Extensions.NETCore.Setup" />
+        <PackageReference Include="AWSSDK.KeyManagementService" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="EntityFrameworkCore.Encrypted.Tests.AwsKms" />
+    </ItemGroup>
+
+</Project>
