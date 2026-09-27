@@ -1,18 +1,21 @@
 using System.Reflection;
 using EntityFrameworkCore.Encrypted.Annotations;
-using EntityFrameworkCore.Encrypted.Common.Abstractions;
 using EntityFrameworkCore.Encrypted.Common.Exceptions;
+using EntityFrameworkCore.Encrypted.Common.Keys;
+using EntityFrameworkCore.Encrypted.Providers;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions;
 
 namespace EntityFrameworkCore.Encrypted.Common.Plugin;
 
-public class EncryptionConvention(IEncryptionProvider provider) : IModelFinalizingConvention
+internal sealed class EncryptionConvention(DataKeyRing? keyRing, Type contextType) : IModelFinalizingConvention
 {
     public void ProcessModelFinalizing(IConventionModelBuilder modelBuilder, IConventionContext<IConventionModelBuilder> context)
     {
-        var converter = new EncryptionConverter(provider);
-        
+        // keys are resolved on first encrypt/decrypt, so building the model (migrations, design time) needs no keys
+        var encryptionProvider = new Aes256EncryptionProvider(GetKey);
+        var converter = new EncryptionConverter(encryptionProvider);
+
         foreach (var entityType in modelBuilder.Metadata.GetEntityTypes())
         {
             var encryptedProperties = entityType.GetProperties()
@@ -30,9 +33,14 @@ public class EncryptionConvention(IEncryptionProvider provider) : IModelFinalizi
             {
                 if (property.ClrType != typeof(string))
                     throw new EntityFrameworkEncryptionException("Encryption could be applied only for string types");
-               
+
                 property.SetValueConverter(converter);
             }
         }
     }
+
+    private byte[] GetKey()
+        => keyRing?.GetKey(contextType) ?? throw new EntityFrameworkEncryptionException(
+            $"Encryption is not configured for {contextType.Name}. " +
+            "Register it with services.AddEncryption(...) and create the context through dependency injection");
 }

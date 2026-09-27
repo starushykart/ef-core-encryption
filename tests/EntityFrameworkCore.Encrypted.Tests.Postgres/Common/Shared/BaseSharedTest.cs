@@ -1,4 +1,3 @@
-using EntityFrameworkCore.Encrypted.Providers;
 using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Extensions;
 using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Fixtures;
 using Microsoft.Extensions.DependencyInjection;
@@ -47,8 +46,6 @@ public abstract class BaseSharedTest(PostgresContainerFixture postgres, ITestOut
         await _respawner.ResetAsync(_dbConnection);
         await _dbConnection.DisposeAsync();
         await Provider.DisposeAsync();
-        
-        InMemoryKeyStorage.Instance.Clear();
     }
 
     protected abstract void Configure(IServiceCollection services);

@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Conventions.Infrastructure;
 
 namespace EntityFrameworkCore.Encrypted.Common.Plugin;
 
-public class EncryptionConventionPlugin(IDbContextOptions options) : IConventionSetPlugin
+internal sealed class EncryptionConventionPlugin(IDbContextOptions options, ICurrentDbContext currentContext) : IConventionSetPlugin
 {
     public ConventionSet ModifyConventions(ConventionSet conventionSet)
     {
@@ -13,7 +13,9 @@ public class EncryptionConventionPlugin(IDbContextOptions options) : IConvention
         if (extension == null)
             return conventionSet;
 
-        conventionSet.ModelFinalizingConventions.Add(new EncryptionConvention(extension.Provider));
+        conventionSet.ModelFinalizingConventions.Add(
+            new EncryptionConvention(extension.KeyRing, currentContext.Context.GetType()));
+
         return conventionSet;
     }
 }

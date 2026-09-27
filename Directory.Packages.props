@@ -18,6 +18,7 @@
     </ItemGroup>
 
     <ItemGroup Label="Microsoft.Extensions">
+        <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
         <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.12" />
     </ItemGroup>
 

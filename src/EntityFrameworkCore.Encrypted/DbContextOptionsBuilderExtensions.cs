@@ -1,41 +1,45 @@
 using EntityFrameworkCore.Encrypted.Common;
-using EntityFrameworkCore.Encrypted.Common.Abstractions;
-using EntityFrameworkCore.Encrypted.Providers;
+using EntityFrameworkCore.Encrypted.Common.Exceptions;
+using EntityFrameworkCore.Encrypted.Common.Keys;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace EntityFrameworkCore.Encrypted;
 
 public static class DbContextOptionsBuilderExtensions
 {
-    public static DbContextOptionsBuilder UseAes256Encryption(this DbContextOptionsBuilder optionsBuilder, byte[] key)
+    /// <summary>
+    /// Enables encryption of properties marked with <c>[Encrypted]</c> or <c>IsEncrypted()</c>,
+    /// using services registered by <see cref="ServiceCollectionExtensions.AddEncryption"/>.
+    /// </summary>
+    /// <remarks>
+    /// Outside of dependency injection (design-time factories, manually built options) the model is still
+    /// configured with encrypted columns, but encrypting or decrypting values throws.
+    /// </remarks>
+    public static DbContextOptionsBuilder UseEncryption(this DbContextOptionsBuilder optionsBuilder)
     {
-        InMemoryKeyStorage.Instance.AddKey(optionsBuilder.Options.ContextType.Name, key);
+        ArgumentNullException.ThrowIfNull(optionsBuilder);
 
-        var keyProvider = new InMemoryKeyProvider(InMemoryKeyStorage.Instance, optionsBuilder.Options.ContextType.Name);
-        var encryptionProvider = new Aes256EncryptionProvider(keyProvider);
+        // EF sets the application service provider before invoking the AddDbContext* options action
+        var applicationServiceProvider = optionsBuilder.Options
+            .FindExtension<CoreOptionsExtension>()?
+            .ApplicationServiceProvider;
 
-        return optionsBuilder.UseEncryption(encryptionProvider);
-    }
-    
-    public static DbContextOptionsBuilder UseAes256Encryption(this DbContextOptionsBuilder optionsBuilder, string keyBase64) 
-        => optionsBuilder.UseAes256Encryption(Convert.FromBase64String(keyBase64));
-    
-    public static DbContextOptionsBuilder UseEncryption(this DbContextOptionsBuilder optionsBuilder, IEncryptionProvider encryptionProvider)
-    {
-        var extension = (optionsBuilder.Options.FindExtension<EncryptionDbContextOptionsExtension>()
-                         ?? new EncryptionDbContextOptionsExtension(encryptionProvider))
-            .WithEncryptionProvider(encryptionProvider);
+        var keyRing = applicationServiceProvider?.GetService<DataKeyRing>();
 
-        ((IDbContextOptionsBuilderInfrastructure)optionsBuilder).AddOrUpdateExtension(extension);
-        
+        if (applicationServiceProvider != null && keyRing == null)
+            throw new EntityFrameworkEncryptionException(
+                $"Encryption services are not registered. Call services.{nameof(ServiceCollectionExtensions.AddEncryption)}(...)");
+
+        ((IDbContextOptionsBuilderInfrastructure)optionsBuilder)
+            .AddOrUpdateExtension(new EncryptionDbContextOptionsExtension(keyRing));
+
         return optionsBuilder;
     }
-    
-    public static DbContextOptionsBuilder<TContext> UseDesignTimeEncryption<TContext>(this DbContextOptionsBuilder<TContext> optionsBuilder)
+
+    /// <inheritdoc cref="UseEncryption(DbContextOptionsBuilder)"/>
+    public static DbContextOptionsBuilder<TContext> UseEncryption<TContext>(this DbContextOptionsBuilder<TContext> optionsBuilder)
         where TContext : DbContext
-    {
-        optionsBuilder.UseEncryption(new DesignTimeEncryptionProvider());
-        return optionsBuilder;
-    }
+        => (DbContextOptionsBuilder<TContext>)UseEncryption((DbContextOptionsBuilder)optionsBuilder);
 }

@@ -9,7 +9,7 @@ internal sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<T
     {
         var options = new DbContextOptionsBuilder<TestDbContext>()
             .UseNpgsql()
-            .UseDesignTimeEncryption()
+            .UseEncryption()
             .Options;
 
         return new TestDbContext(options);

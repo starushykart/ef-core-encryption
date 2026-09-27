@@ -9,7 +9,6 @@ internal sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<E
     {
         var options = new DbContextOptionsBuilder<EncryptionMetadataContext>()
             .UseNpgsql()
-            .UseDesignTimeEncryption()
             .Options;
 
         return new EncryptionMetadataContext(options);

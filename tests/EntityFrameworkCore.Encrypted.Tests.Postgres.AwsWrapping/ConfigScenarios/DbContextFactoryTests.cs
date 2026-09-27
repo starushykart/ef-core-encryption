@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using EntityFrameworkCore.Encrypted.Postgres.AwsWrapping;
 using EntityFrameworkCore.Encrypted.Tests.Postgres.AwsWrapping.Common.Extensions;
+using EntityFrameworkCore.Encrypted;
 using EntityFrameworkCore.Encrypted.Tests.Postgres.AwsWrapping.Common.Fixtures;
 using EntityFrameworkCore.Encrypted.Tests.Postgres.Common;
 using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Extensions;
@@ -22,7 +23,7 @@ public class DbContextFactoryTests(
     [Fact]
     public async Task Should_encrypt_and_decrypt_successfully()
     {
-        await Provider.RunAwsWrappingHostedServiceAsync();
+        await Provider.InitializeEncryptionAsync();
         
         var factory = Provider.GetRequiredService<IDbContextFactory<TestDbContext>>();
         await using var context = await factory.CreateDbContextAsync();
@@ -49,6 +50,6 @@ public class DbContextFactoryTests(
                 .GenerateDataKeyIfNotExist())
             .AddDbContextFactory<TestDbContext>(x => x
                 .UseNpgsql(ConnectionString)
-                .UseAes256Encryption());
+                .UseEncryption());
     }
 }

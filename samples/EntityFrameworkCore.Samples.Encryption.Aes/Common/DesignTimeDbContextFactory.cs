@@ -11,7 +11,7 @@ internal class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<Encrypte
     {
         var options = new DbContextOptionsBuilder<EncryptedDbContext>()
             .UseNpgsql()
-            .UseDesignTimeEncryption()
+            .UseEncryption()
             .Options;
 
         return new EncryptedDbContext(options);
