@@ -9,7 +9,14 @@
         <Copyright>Copyright © 2024-2026 Artem Starushyk</Copyright>
         <Description>Application-side EF Core encryption</Description>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageProjectUrl>https://github.com/starushykart/ef-core-encryption</PackageProjectUrl>
+        <PackageTags>efcore;entity-framework-core;encryption;aes-gcm;kms</PackageTags>
     </PropertyGroup>
+
+    <ItemGroup>
+        <None Include="README.md" Pack="true" PackagePath="\" />
+    </ItemGroup>
 
     <PropertyGroup Condition="'$(GITHUB_ACTIONS)' == 'true'">
         <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
