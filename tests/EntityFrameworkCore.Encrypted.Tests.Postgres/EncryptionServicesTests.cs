@@ -1,6 +1,6 @@
 using System.Security.Cryptography;
 using EntityFrameworkCore.Encrypted.Annotations;
-using EntityFrameworkCore.Encrypted.Common.Abstractions;
+using EntityFrameworkCore.Encrypted.Keys;
 using EntityFrameworkCore.Encrypted.Common.Exceptions;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
@@ -21,7 +21,7 @@ public class EncryptionServicesTests
     [Fact]
     public void Should_reuse_model_across_scopes()
     {
-        using var provider = BuildProvider(new CountingKeySource());
+        using var provider = BuildProvider(new CountingRootKeyProvider());
 
         var models = Enumerable.Range(0, 30)
             .Select(_ =>
@@ -38,8 +38,8 @@ public class EncryptionServicesTests
     [Fact]
     public void Should_isolate_models_between_service_providers()
     {
-        using var first = BuildProvider(new CountingKeySource());
-        using var second = BuildProvider(new CountingKeySource());
+        using var first = BuildProvider(new CountingRootKeyProvider());
+        using var second = BuildProvider(new CountingRootKeyProvider());
 
         var firstModel = first.CreateScope().ServiceProvider.GetRequiredService<UnitDbContext>().Model;
         var secondModel = second.CreateScope().ServiceProvider.GetRequiredService<UnitDbContext>().Model;
@@ -55,7 +55,7 @@ public class EncryptionServicesTests
         var models = Enumerable.Range(0, 40)
             .Select(_ =>
             {
-                using var provider = BuildProvider(new CountingKeySource());
+                using var provider = BuildProvider(new CountingRootKeyProvider());
                 using var scope = provider.CreateScope();
                 return scope.ServiceProvider.GetRequiredService<UnitDbContext>().Model;
             })
@@ -71,7 +71,7 @@ public class EncryptionServicesTests
         // EF model cache fits ~40 models; without eviction later applications would rebuild the model per scope
         for (var i = 0; i < 60; i++)
         {
-            using var disposed = BuildProvider(new CountingKeySource());
+            using var disposed = BuildProvider(new CountingRootKeyProvider());
             _ = disposed.CreateScope().ServiceProvider.GetRequiredService<UnitDbContext>().Model;
         }
 
@@ -82,7 +82,7 @@ public class EncryptionServicesTests
     public void Should_keep_custom_model_cache_key_factory()
     {
         using var provider = new ServiceCollection()
-            .AddEncryption(x => x.UseDataKeySource(_ => new CountingKeySource()))
+            .AddEncryption(x => x.UseRootKeyProvider(_ => new CountingRootKeyProvider()))
             .AddDbContext<UnitDbContext>(x => x
                 .UseNpgsql(ConnectionString)
                 .UseEncryption()
@@ -98,7 +98,7 @@ public class EncryptionServicesTests
     [Fact]
     public void Should_load_key_lazily_on_first_use()
     {
-        var source = new CountingKeySource();
+        var source = new CountingRootKeyProvider();
         using var provider = BuildProvider(source);
         using var scope = provider.CreateScope();
 
@@ -116,7 +116,7 @@ public class EncryptionServicesTests
     [Fact]
     public async Task Should_load_keys_eagerly_with_InitializeEncryptionAsync()
     {
-        var source = new CountingKeySource();
+        var source = new CountingRootKeyProvider();
         await using var provider = BuildProvider(source);
 
         await provider.InitializeEncryptionAsync();
@@ -132,11 +132,11 @@ public class EncryptionServicesTests
     [Fact]
     public async Task Should_load_keys_before_hosted_services_start()
     {
-        var source = new CountingKeySource();
+        var source = new CountingRootKeyProvider();
 
         var builder = Host.CreateApplicationBuilder();
         builder.Services
-            .AddEncryption(x => x.UseDataKeySource(_ => source))
+            .AddEncryption(x => x.UseRootKeyProvider(_ => source))
             .AddDbContext<UnitDbContext>(x => x.UseNpgsql(ConnectionString).UseEncryption())
             .AddSingleton(source)
             .AddSingleton<KeyUsageRecordingService>()
@@ -152,7 +152,7 @@ public class EncryptionServicesTests
     [Fact]
     public async Task Should_retry_key_loading_after_failure()
     {
-        var source = new CountingKeySource { FailFirstCall = true };
+        var source = new CountingRootKeyProvider { FailFirstCall = true };
         await using var provider = BuildProvider(source);
 
         var first = () => provider.InitializeEncryptionAsync();
@@ -163,9 +163,9 @@ public class EncryptionServicesTests
     }
 
     [Fact]
-    public async Task Should_reject_data_key_of_invalid_size()
+    public async Task Should_reject_root_key_of_invalid_size()
     {
-        await using var provider = BuildProvider(new CountingKeySource { KeySize = 16 });
+        await using var provider = BuildProvider(new CountingRootKeyProvider { KeySize = 16 });
 
         var act = () => provider.InitializeEncryptionAsync();
 
@@ -219,9 +219,9 @@ public class EncryptionServicesTests
         act.Should().Throw<EntityFrameworkEncryptionException>().WithMessage("*not configured*");
     }
 
-    private static ServiceProvider BuildProvider(IDataKeySource source)
+    private static ServiceProvider BuildProvider(IRootKeyProvider source)
         => new ServiceCollection()
-            .AddEncryption(x => x.UseDataKeySource(_ => source))
+            .AddEncryption(x => x.UseRootKeyProvider(_ => source))
             .AddDbContext<UnitDbContext>(x => x.UseNpgsql(ConnectionString).UseEncryption())
             .BuildServiceProvider();
 
@@ -231,7 +231,7 @@ public class EncryptionServicesTests
             .FindProperty(nameof(UnitEntity.Secret))!
             .GetValueConverter()!;
 
-    private sealed class CountingKeySource : IDataKeySource
+    private sealed class CountingRootKeyProvider : IRootKeyProvider
     {
         private int _calls;
 
@@ -240,17 +240,23 @@ public class EncryptionServicesTests
         public bool FailFirstCall { get; init; }
         public int KeySize { get; init; } = 32;
 
-        public ValueTask<byte[]> GetDataKeyAsync(DataKeyContext context, CancellationToken cancellationToken)
+        public Task<RootKey> GetActiveRootKeyAsync(Type dbContextType, CancellationToken cancellationToken)
         {
             var call = Interlocked.Increment(ref _calls);
             lock (Contexts)
-                Contexts.Add(context.DbContextType);
+                Contexts.Add(dbContextType);
 
             if (FailFirstCall && call == 1)
                 throw new InvalidOperationException("Key source is unavailable");
 
-            return ValueTask.FromResult(RandomNumberGenerator.GetBytes(KeySize));
+            return Task.FromResult(new RootKey(1, RandomNumberGenerator.GetBytes(KeySize)));
         }
+
+        public Task<RootKey?> GetRootKeyAsync(Type dbContextType, int rootKeyId, CancellationToken cancellationToken)
+            => Task.FromResult<RootKey?>(null);
+
+        public Task<RootKey> RotateRootKeyAsync(Type dbContextType, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
     }
 
     private sealed class CountingModelCacheKeyFactory : IModelCacheKeyFactory
@@ -266,7 +272,7 @@ public class EncryptionServicesTests
         }
     }
 
-    private sealed class KeyUsageRecordingService(CountingKeySource source) : IHostedService
+    private sealed class KeyUsageRecordingService(CountingRootKeyProvider source) : IHostedService
     {
         public int SourceCallsOnStart { get; private set; } = -1;
 

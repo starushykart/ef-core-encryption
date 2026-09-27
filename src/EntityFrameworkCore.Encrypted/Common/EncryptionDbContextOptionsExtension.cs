@@ -1,5 +1,6 @@
 using EntityFrameworkCore.Encrypted.Common.Keys;
 using EntityFrameworkCore.Encrypted.Common.Plugin;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions.Infrastructure;
 using Microsoft.Extensions.Caching.Memory;
@@ -24,6 +25,8 @@ internal sealed class EncryptionDbContextOptionsExtension(DataKeyRing? keyRing) 
     {
         new EntityFrameworkServicesBuilder(services)
             .TryAdd<IConventionSetPlugin, EncryptionConventionPlugin>();
+
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IInterceptor, EncryptedQueryGuard>());
 
         DecorateModelCacheKeyFactory(services);
     }

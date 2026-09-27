@@ -1,7 +1,6 @@
-using EntityFrameworkCore.Encrypted.Common.Abstractions;
-using EntityFrameworkCore.Encrypted.Common.Exceptions;
 using EntityFrameworkCore.Encrypted.Common.Hosting;
 using EntityFrameworkCore.Encrypted.Common.Keys;
+using EntityFrameworkCore.Encrypted.Keys;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
@@ -23,15 +22,14 @@ public static class ServiceCollectionExtensions
         var builder = new EncryptionBuilder(services);
         configure(builder);
 
-        var sourceFactory = builder.DataKeySourceFactory
-            ?? throw new EntityFrameworkEncryptionException(
-                "Data key source is not configured. Call UseKey(...) or UseDataKeySource(...)");
+        var rootKeyProviderFactory = builder.BuildRootKeyProviderFactory();
 
-        // last registration wins, so AddEncryption can be called more than once (e.g. by provider packages)
-        services.Replace(ServiceDescriptor.Singleton(sourceFactory));
-        services.TryAddSingleton(sp => new DataKeyRing(
-            sp.GetRequiredService<IDataKeySource>(),
-            sp.GetService<ILoggerFactory>()?.CreateLogger(typeof(DataKeyRing)) ?? NullLogger.Instance));
+        // last registration wins, so AddEncryption can be called more than once
+        services.Replace(ServiceDescriptor.Singleton(rootKeyProviderFactory));
+        services.Replace(ServiceDescriptor.Singleton(sp => new DataKeyRing(
+            sp.GetRequiredService<IRootKeyProvider>(),
+            builder.DataKeyVersion,
+            sp.GetService<ILoggerFactory>()?.CreateLogger(typeof(DataKeyRing)) ?? NullLogger.Instance)));
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, EncryptionKeyInitializer>());
 
         return services;

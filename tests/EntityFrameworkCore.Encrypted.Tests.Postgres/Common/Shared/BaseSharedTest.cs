@@ -14,6 +14,7 @@ public abstract class BaseSharedTest(PostgresContainerFixture postgres, ITestOut
     private Respawner _respawner = null!;
     protected ServiceProvider Provider { get; private set; } = null!;
     protected string ConnectionString => postgres.ConnectionString;
+    protected ITestOutputHelper Helper => helper;
     
     private async Task InitializeRespawner()
     {

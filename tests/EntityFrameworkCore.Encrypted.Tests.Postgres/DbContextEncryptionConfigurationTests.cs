@@ -45,11 +45,11 @@ public class DbContextEncryptionConfigurationTests
         
         encryptedFluentPropertyValueConverter
             .Should().NotBeNull()
-            .And.BeOfType<EncryptionConverter>();
+            .And.BeOfType<StringEncryptionConverter>();
         
         encryptedAttributePropertyValueConverter
             .Should().NotBeNull()
-            .And.BeOfType<EncryptionConverter>();
+            .And.BeOfType<StringEncryptionConverter>();
     }
 
     [Fact]
@@ -106,10 +106,8 @@ public class DbContextEncryptionConfigurationTests
         public Guid Id { get; set; }
 
         [Encrypted]
-        [MaxLength(200)]
         public string EncryptedAttribute { get; set; } = null!;
     
-        [MaxLength(200)]
         public string EncryptedFluent { get; set; } = null!;
     
         public int NonStringProperty { get; set; }

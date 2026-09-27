@@ -13,8 +13,10 @@ internal sealed class EncryptionConventionPlugin(IDbContextOptions options, ICur
         if (extension == null)
             return conventionSet;
 
-        conventionSet.ModelFinalizingConventions.Add(
-            new EncryptionConvention(extension.KeyRing, currentContext.Context.GetType()));
+        var convention = new EncryptionConvention(extension.KeyRing, currentContext.Context.GetType());
+
+        conventionSet.ModelInitializedConventions.Add(convention);
+        conventionSet.ModelFinalizingConventions.Add(convention);
 
         return conventionSet;
     }
