@@ -1,4 +1,5 @@
 using Amazon.KeyManagementService;
+using EntityFrameworkCore.Encrypted;
 using EntityFrameworkCore.Encrypted.Postgres.AwsWrapping;
 using EntityFrameworkCore.Samples.Encryption.AesWrapping.Common;
 using EntityFrameworkCore.Samples.Encryption.AesWrapping.Database;
@@ -32,7 +33,7 @@ if (true)
     builder.Services.AddDbContext<EncryptedDbContext>(
         x => x
             .UseNpgsql(builder.Configuration.GetValue<string>("Database:ConnectionString"))
-            .UseAes256Encryption());
+            .UseEncryption());
 }
 else
 #pragma warning disable CS0162 // Unreachable code detected
@@ -41,7 +42,7 @@ else
     builder.Services.AddDbContext<EncryptedDbContext>(
         x => x
             .UseNpgsql(builder.Configuration.GetValue<string>("Database:ConnectionString"))
-            .UseAes256Encryption(),
+            .UseEncryption(),
         x=> x.WithKeyArn(builder.Configuration.GetValue<string>("Database:WrappingKeyId")!));
 }
 #pragma warning restore CS0162 // Unreachable code detected

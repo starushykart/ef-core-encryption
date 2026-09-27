@@ -3,14 +3,14 @@ using EntityFrameworkCore.Encrypted.Common.Abstractions;
 
 namespace EntityFrameworkCore.Encrypted.Providers;
 
-internal class Aes256EncryptionProvider(IKeyProvider keyProvider) : IEncryptionProvider
+internal class Aes256EncryptionProvider(Func<byte[]> getKey) : IEncryptionProvider
 {
     public byte[]? Encrypt(byte[]? input)
     {
         if (input is null || input.Length == 0)
             return null;
 
-        using var aes = CreateCryptographyProvider(keyProvider.GetKey());
+        using var aes = CreateCryptographyProvider(getKey());
 
         using var memoryStream = new MemoryStream();
         memoryStream.Write(aes.IV);
@@ -27,7 +27,7 @@ internal class Aes256EncryptionProvider(IKeyProvider keyProvider) : IEncryptionP
         if (input == null || input.Length == 0)
             return null;
 
-        using var aes = CreateCryptographyProvider(keyProvider.GetKey());
+        using var aes = CreateCryptographyProvider(getKey());
         using var memoryStream = new MemoryStream();
 
         var ivSize = aes.BlockSize / 8;

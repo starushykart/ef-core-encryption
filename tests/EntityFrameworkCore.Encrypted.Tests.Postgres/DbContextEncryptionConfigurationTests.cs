@@ -2,7 +2,6 @@ using System.ComponentModel.DataAnnotations;
 using EntityFrameworkCore.Encrypted.Annotations;
 using EntityFrameworkCore.Encrypted.Common.Exceptions;
 using EntityFrameworkCore.Encrypted.Common.Plugin;
-using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Shared;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -58,7 +57,7 @@ public class DbContextEncryptionConfigurationTests
     {
         var act = () =>
         {
-            using var context = new TestsUnitTestContext(applyEncryptionToNonStringProp: true);
+            using var context = new NonStringEncryptedTestContext();
             context.TestEntities.Add(new TestEntity());
         };
 
@@ -76,25 +75,32 @@ public class DbContextEncryptionConfigurationTests
         encryptionPlugin.Should().BeOfType<EncryptionConventionPlugin>();
     }
     
-    public class TestsUnitTestContext(bool applyEncryptionToNonStringProp = false) : DbContext
+    public class TestsUnitTestContext : DbContext
     {
         public DbSet<TestEntity> TestEntities => Set<TestEntity>();
     
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-            => optionsBuilder.UseNpgsql().UseAes256Encryption(TestUtils.GenerateAesKeyBase64());
+            => optionsBuilder.UseNpgsql().UseEncryption();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.Entity<TestEntity>(entity =>
             {
                 entity.Property(x => x.EncryptedFluent).IsEncrypted();
-
-                if (applyEncryptionToNonStringProp)
-                    entity.Property(x => x.NonStringProperty).IsEncrypted();
             });
         }
     }
     
+    // separate context type: EF caches the model per context type
+    public class NonStringEncryptedTestContext : TestsUnitTestContext
+    {
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+            modelBuilder.Entity<TestEntity>().Property(x => x.NonStringProperty).IsEncrypted();
+        }
+    }
+
     public class TestEntity
     {
         public Guid Id { get; set; }

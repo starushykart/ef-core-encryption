@@ -37,8 +37,10 @@ public class DbContextFactoryTests(PostgresContainerFixture postgres, ITestOutpu
     {
         var key = TestUtils.GenerateAesKeyBase64();
 
-        services.AddDbContextFactory<TestDbContext>(x => x
+        services
+            .AddEncryption(x => x.UseKey(key))
+            .AddDbContextFactory<TestDbContext>(x => x
             .UseNpgsql(ConnectionString)
-            .UseAes256Encryption(key));
+            .UseEncryption());
     }
 }

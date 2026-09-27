@@ -37,8 +37,10 @@ public class DbContextFactoryPooledTests(PostgresContainerFixture postgres, ITes
     {
         var key = TestUtils.GenerateAesKeyBase64();
 
-        services.AddPooledDbContextFactory<TestDbContext>(x => x
+        services
+            .AddEncryption(x => x.UseKey(key))
+            .AddPooledDbContextFactory<TestDbContext>(x => x
             .UseNpgsql(ConnectionString)
-            .UseAes256Encryption(key), 2);
+            .UseEncryption(), 2);
     }
 }

@@ -11,9 +11,11 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddHostedService<MigrationHostedService>();
 
 // configure db context with encryption
-builder.Services.AddDbContext<EncryptedDbContext>(x => x
-    .UseNpgsql(builder.Configuration.GetValue<string>("Database:ConnectionString"))
-    .UseAes256Encryption(builder.Configuration.GetValue<string>("Database:TestAesKey")!));
+builder.Services
+    .AddEncryption(x => x.UseKey(builder.Configuration.GetValue<string>("Database:TestAesKey")!))
+    .AddDbContext<EncryptedDbContext>(x => x
+        .UseNpgsql(builder.Configuration.GetValue<string>("Database:ConnectionString"))
+        .UseEncryption());
 
 var app = builder.Build();
 

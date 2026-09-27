@@ -1,6 +1,6 @@
 namespace EntityFrameworkCore.Encrypted.Common.Abstractions;
 
-public interface IEncryptionProvider
+internal interface IEncryptionProvider
 {
     byte[]? Encrypt(byte[]? input);
 

@@ -1,9 +1,7 @@
 using Amazon.KeyManagementService;
-using EntityFrameworkCore.Encrypted.Common.Abstractions;
 using EntityFrameworkCore.Encrypted.Postgres.AwsWrapping.Common;
 using EntityFrameworkCore.Encrypted.Postgres.AwsWrapping.Database;
 using EntityFrameworkCore.Encrypted.Postgres.AwsWrapping.Services;
-using EntityFrameworkCore.Encrypted.Providers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -24,11 +22,9 @@ public static class ServiceCollectionExtensions
         var wrappingOptions = builder.Build();
 
         services.TryAddSingleton(wrappingOptions);
-        services.TryAddSingleton(TimeProvider.System);
-        services.TryAddSingleton<IKeyStorage>(InMemoryKeyStorage.Instance);
         services.TryAddAWSService<IAmazonKeyManagementService>();
-        services.AddHostedService<AwsKeyWrappingHostedService>();
         services.AddDbContextFactory<EncryptionMetadataContext>(x => x.UseNpgsql(connectionString));
+        services.AddEncryption(x => x.UseDataKeySource<AwsKmsDataKeySource>());
 
         return services;
     }
