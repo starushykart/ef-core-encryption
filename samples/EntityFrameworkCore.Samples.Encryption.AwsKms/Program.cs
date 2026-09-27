@@ -32,11 +32,11 @@ app.UseSwaggerUI();
 app.UseHttpsRedirection();
 
 app.MapGet("/passwords", (EncryptedDbContext context, CancellationToken ct)
-        => context.EncryptedWrappedPasswords.ToListAsync(ct));
+        => context.EncryptedPasswords.ToListAsync(ct));
 
 app.MapPost("/passwords", async (string password, EncryptedDbContext context, CancellationToken ct) =>
     {
-        context.Add(new PasswordWithEncryptionWrapping
+        context.Add(new PasswordWithEncryption
         {
             EncryptedFluent = password,
             EncryptedAttribute = password,
@@ -48,5 +48,14 @@ app.MapPost("/passwords", async (string password, EncryptedDbContext context, Ca
 
 app.MapPost("/keys/rotate", (IServiceProvider services, CancellationToken ct)
     => services.RotateRootKeyAsync<EncryptedDbContext>(ct));
+
+app.MapGet("/keys/usage", (IServiceProvider services, CancellationToken ct)
+    => services.GetKeyUsageAsync<EncryptedDbContext>(ct));
+
+app.MapPost("/keys/re-encrypt", (IServiceProvider services, CancellationToken ct)
+    => services.ReEncryptAsync<EncryptedDbContext>(cancellationToken: ct));
+
+app.MapPost("/keys/rewrap", (IServiceProvider services, CancellationToken ct)
+    => services.RewrapRootKeysAsync<EncryptedDbContext>(ct));
 
 app.Run();

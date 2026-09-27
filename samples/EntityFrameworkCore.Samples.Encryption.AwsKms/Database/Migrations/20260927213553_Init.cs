@@ -15,7 +15,7 @@ namespace EntityFrameworkCore.Samples.Encryption.AwsKms.Database.Migrations
                 name: "public");
 
             migrationBuilder.CreateTable(
-                name: "EncryptedWrappedPasswords",
+                name: "EncryptedPasswords",
                 schema: "public",
                 columns: table => new
                 {
@@ -26,7 +26,7 @@ namespace EntityFrameworkCore.Samples.Encryption.AwsKms.Database.Migrations
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_EncryptedWrappedPasswords", x => x.Id);
+                    table.PrimaryKey("PK_EncryptedPasswords", x => x.Id);
                 });
 
             migrationBuilder.CreateTable(
@@ -49,7 +49,7 @@ namespace EntityFrameworkCore.Samples.Encryption.AwsKms.Database.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropTable(
-                name: "EncryptedWrappedPasswords",
+                name: "EncryptedPasswords",
                 schema: "public");
 
             migrationBuilder.DropTable(

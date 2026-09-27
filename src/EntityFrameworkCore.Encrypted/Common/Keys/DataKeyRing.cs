@@ -13,7 +13,7 @@ namespace EntityFrameworkCore.Encrypted.Common.Keys;
 /// root keys from <see cref="IRootKeyProvider"/> and data keys derived from them with HKDF.
 /// Only the active root key is loaded eagerly; other root keys are loaded when a value encrypted with them is read.
 /// </summary>
-internal sealed class DataKeyRing(IRootKeyProvider rootKeyProvider, uint dataKeyVersion, ILogger logger) : IDisposable
+internal sealed class DataKeyRing(IRootKeyProvider rootKeyProvider, EncryptionSettings settings, ILogger<DataKeyRing> logger) : IDisposable
 {
     private readonly ConcurrentDictionary<Type, Lazy<Task<ContextKeys>>> _contexts = new();
     private readonly ConcurrentBag<Action> _onDispose = [];
@@ -35,7 +35,7 @@ internal sealed class DataKeyRing(IRootKeyProvider rootKeyProvider, uint dataKey
     public (KeyId KeyId, byte[] Key) GetEncryptionKey(Type contextType)
     {
         var keys = GetContextKeys(contextType);
-        var keyId = new KeyId(keys.ActiveRootKeyId, dataKeyVersion);
+        var keyId = new KeyId(keys.ActiveRootKeyId, settings.DataKeyVersion);
 
         return (keyId, keys.GetDataKey(keyId));
     }
@@ -52,6 +52,9 @@ internal sealed class DataKeyRing(IRootKeyProvider rootKeyProvider, uint dataKey
     }
 
     private void LoadRootKey(Type contextType, ContextKeys keys, ushort rootKeyId)
+        => LoadRootKeyAsync(contextType, keys, rootKeyId).GetAwaiter().GetResult();
+
+    private async Task LoadRootKeyAsync(Type contextType, ContextKeys keys, ushort rootKeyId)
     {
         // one load per root key: concurrent reads right after a rotation must not each call the key management service
         var load = keys.RootKeyLoads.GetOrAdd(rootKeyId, id => new Lazy<Task<RootKey?>>(
@@ -59,7 +62,7 @@ internal sealed class DataKeyRing(IRootKeyProvider rootKeyProvider, uint dataKey
 
         try
         {
-            var rootKey = load.Value.GetAwaiter().GetResult()
+            var rootKey = await load.Value.ConfigureAwait(false)
                 ?? throw new EntityFrameworkEncryptionException($"Root key {rootKeyId} of {contextType.Name} not found");
 
             if (keys.AddRootKey(rootKey))
@@ -69,6 +72,38 @@ internal sealed class DataKeyRing(IRootKeyProvider rootKeyProvider, uint dataKey
         {
             // loaded keys are served from the cache; failed and missing ones are retried by the next read
             keys.RootKeyLoads.TryRemove(new KeyValuePair<ushort, Lazy<Task<RootKey?>>>(rootKeyId, load));
+        }
+    }
+
+    /// <summary>
+    /// Switches loaded contexts to root keys rotated by other instances. Costs one key store read per context;
+    /// the key management service is called only when there is a new root key.
+    /// </summary>
+    public async Task RefreshAsync(CancellationToken cancellationToken)
+    {
+        foreach (var contextType in _contexts.Keys)
+            await RefreshAsync(contextType, cancellationToken);
+    }
+
+    /// <inheritdoc cref="RefreshAsync(CancellationToken)"/>
+    public async Task RefreshAsync(Type contextType, CancellationToken cancellationToken)
+    {
+        // not loaded yet: the first use loads the current active root key anyway
+        if (!_contexts.TryGetValue(contextType, out var load) || load is not { IsValueCreated: true, Value.IsCompletedSuccessfully: true })
+            return;
+
+        var keys = load.Value.Result;
+
+        try
+        {
+            var activeId = await rootKeyProvider.GetActiveRootKeyIdAsync(contextType, cancellationToken);
+
+            if (activeId > keys.ActiveRootKeyId && activeId <= ushort.MaxValue)
+                await LoadRootKeyAsync(contextType, keys, (ushort)activeId.Value);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Failed to check for a new root key of {Context}", contextType.Name);
         }
     }
 

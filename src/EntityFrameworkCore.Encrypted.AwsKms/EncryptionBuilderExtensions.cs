@@ -1,6 +1,7 @@
 using Amazon.KeyManagementService;
 using EntityFrameworkCore.Encrypted.AwsKms;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace EntityFrameworkCore.Encrypted;
 
@@ -23,8 +24,9 @@ public static class EncryptionBuilderExtensions
         options.Validate();
 
         builder.Services.TryAddAWSService<IAmazonKeyManagementService>();
+        builder.Services.TryAddSingleton(options);
 
-        return builder.UseKeyWrapper(sp => new AwsKmsKeyWrapper(sp.GetRequiredService<IAmazonKeyManagementService>(), options));
+        return builder.UseKeyWrapper<AwsKmsKeyWrapper>();
     }
 
     /// <inheritdoc cref="UseAwsKms(EncryptionBuilder, Action{AwsKmsOptions})"/>

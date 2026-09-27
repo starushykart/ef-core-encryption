@@ -1,3 +1,4 @@
+using EntityFrameworkCore.Encrypted.Common.Keys;
 using System.Security.Cryptography;
 using EntityFrameworkCore.Encrypted.Annotations;
 using EntityFrameworkCore.Encrypted.Keys;
@@ -184,6 +185,26 @@ public class EncryptionServicesTests
     }
 
     [Fact]
+    public async Task AddEncryption_should_keep_first_registration()
+    {
+        var first = new CountingRootKeyProvider();
+        var second = new CountingRootKeyProvider();
+
+        await using var provider = new ServiceCollection()
+            .AddEncryption(x => x.UseRootKeyProvider(_ => first).UseDataKeyVersion(1))
+            .AddEncryption(x => x.UseRootKeyProvider(_ => second).UseDataKeyVersion(2))
+            .AddDbContext<UnitDbContext>(x => x.UseNpgsql(ConnectionString).UseEncryption())
+            .BuildServiceProvider();
+
+        await provider.InitializeEncryptionAsync();
+
+        first.Calls.Should().Be(1);
+        second.Calls.Should().Be(0);
+        provider.GetRequiredService<DataKeyRing>().GetEncryptionKey(typeof(UnitDbContext)).KeyId.DataKeyVersion.Should().Be(1);
+        provider.GetServices<IHostedService>().Should().HaveCount(2, "hosted services are registered once");
+    }
+
+    [Fact]
     public void AddEncryption_should_require_key_source()
     {
         var act = () => new ServiceCollection().AddEncryption(_ => { });
@@ -255,7 +276,13 @@ public class EncryptionServicesTests
         public Task<RootKey?> GetRootKeyAsync(Type dbContextType, int rootKeyId, CancellationToken cancellationToken)
             => Task.FromResult<RootKey?>(null);
 
+        public Task<int?> GetActiveRootKeyIdAsync(Type dbContextType, CancellationToken cancellationToken)
+            => Task.FromResult<int?>(1);
+
         public Task<RootKey> RotateRootKeyAsync(Type dbContextType, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<int> RewrapRootKeysAsync(Type dbContextType, CancellationToken cancellationToken)
             => throw new NotSupportedException();
     }
 

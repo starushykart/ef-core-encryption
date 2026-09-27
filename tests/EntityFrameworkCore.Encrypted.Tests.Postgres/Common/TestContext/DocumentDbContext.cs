@@ -43,12 +43,7 @@ public sealed class DocumentDbContext(DbContextOptions<DocumentDbContext> option
         => Model.FindEntityType(typeof(Document))!.FindProperty(property)!.GetValueConverter()!;
 
     public string GetLabel(string property)
-        => GetConverter(property) switch
-        {
-            StringEncryptionConverter x => x.Encryptor.Label,
-            BinaryEncryptionConverter x => x.Encryptor.Label,
-            var x => throw new InvalidOperationException($"{x.GetType().Name} is not an encryption converter")
-        };
+        => ((IEncryptionConverter)GetConverter(property)).Encryptor.Label;
 }
 
 public sealed class Document
