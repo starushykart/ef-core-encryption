@@ -1,6 +1,8 @@
 using EntityFrameworkCore.Encrypted.Common;
 using EntityFrameworkCore.Encrypted.Common.Exceptions;
 using EntityFrameworkCore.Encrypted.Common.Keys;
+using EntityFrameworkCore.Encrypted.Common.Maintenance;
+using EntityFrameworkCore.Encrypted.Keys;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -34,10 +36,38 @@ public static class ServiceProviderExtensions
     public static Task<int> RotateRootKeyAsync<TContext>(this IServiceProvider serviceProvider, CancellationToken cancellationToken = default)
         where TContext : DbContext
     {
-        var keyRing = serviceProvider.GetService<DataKeyRing>()
-            ?? throw new EntityFrameworkEncryptionException(
-                $"Encryption services are not registered. Call services.{nameof(ServiceCollectionExtensions.AddEncryption)}(...)");
-
-        return keyRing.RotateRootKeyAsync(typeof(TContext), cancellationToken);
+        return GetService<DataKeyRing>(serviceProvider).RotateRootKeyAsync(typeof(TContext), cancellationToken);
     }
+
+    /// <summary>
+    /// Wraps all root keys of <typeparamref name="TContext"/> with the currently configured wrapping key, e.g. after
+    /// moving to another KMS key. Values are not touched. Keep the previous wrapping key enabled until this completes.
+    /// </summary>
+    /// <returns>Number of rewrapped root keys.</returns>
+    public static Task<int> RewrapRootKeysAsync<TContext>(this IServiceProvider serviceProvider, CancellationToken cancellationToken = default)
+        where TContext : DbContext
+        => GetService<IRootKeyProvider>(serviceProvider).RewrapRootKeysAsync(typeof(TContext), cancellationToken);
+
+    /// <summary>
+    /// Counts stored values of <typeparamref name="TContext"/> per column and key, e.g. to check that no value
+    /// uses a root key before retiring it. Reads every encrypted column of every table.
+    /// </summary>
+    public static Task<IReadOnlyList<KeyUsage>> GetKeyUsageAsync<TContext>(this IServiceProvider serviceProvider, CancellationToken cancellationToken = default)
+        where TContext : DbContext
+        => GetService<EncryptedDataMaintenance>(serviceProvider).GetKeyUsageAsync(typeof(TContext), cancellationToken);
+
+    /// <summary>
+    /// Re-encrypts stored values of <typeparamref name="TContext"/> that are not encrypted with the active key
+    /// (root key and data key version), <paramref name="batchSize"/> values per transaction.
+    /// Safe to run while the application is running and to restart: values changed concurrently are left as is.
+    /// </summary>
+    public static Task<ReEncryptionResult> ReEncryptAsync<TContext>(
+        this IServiceProvider serviceProvider, int batchSize = 1000, CancellationToken cancellationToken = default)
+        where TContext : DbContext
+        => GetService<EncryptedDataMaintenance>(serviceProvider).ReEncryptAsync(typeof(TContext), batchSize, cancellationToken);
+
+    private static T GetService<T>(IServiceProvider serviceProvider) where T : notnull
+        => serviceProvider.GetService<T>()
+           ?? throw new EntityFrameworkEncryptionException(
+               $"Encryption services are not registered. Call services.{nameof(ServiceCollectionExtensions.AddEncryption)}(...)");
 }

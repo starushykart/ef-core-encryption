@@ -1,3 +1,4 @@
+using EntityFrameworkCore.Encrypted.Common;
 using EntityFrameworkCore.Encrypted.Common.Crypto;
 using EntityFrameworkCore.Encrypted.Common.Exceptions;
 using EntityFrameworkCore.Encrypted.Common.Keys;
@@ -11,11 +12,10 @@ namespace EntityFrameworkCore.Encrypted;
 public sealed class EncryptionBuilder
 {
     private readonly Dictionary<int, byte[]> _staticKeys = [];
-    private Func<IServiceProvider, IKeyWrapper>? _keyWrapperFactory;
-    private Func<IServiceProvider, IRootKeyStore>? _rootKeyStoreFactory;
-    private Func<IServiceProvider, IRootKeyProvider>? _rootKeyProviderFactory;
-    private bool _createRootKeyIfMissing = true;
-    private uint _dataKeyVersion;
+    private ServiceDescriptor? _keyWrapper;
+    private ServiceDescriptor? _rootKeyStore;
+    private ServiceDescriptor? _rootKeyProvider;
+    private EncryptionSettings _settings = new();
 
     internal EncryptionBuilder(IServiceCollection services)
         => Services = services;
@@ -53,26 +53,21 @@ public sealed class EncryptionBuilder
     /// Envelope encryption: root keys are generated and wrapped by a key management service and stored wrapped
     /// in the <c>__EncryptionKeys</c> table of each encrypted context.
     /// </summary>
+    public EncryptionBuilder UseKeyWrapper<TKeyWrapper>() where TKeyWrapper : class, IKeyWrapper
+        => UseKeyWrapper(ServiceDescriptor.Singleton<IKeyWrapper, TKeyWrapper>());
+
+    /// <inheritdoc cref="UseKeyWrapper{TKeyWrapper}"/>
     public EncryptionBuilder UseKeyWrapper(Func<IServiceProvider, IKeyWrapper> factory)
     {
         ArgumentNullException.ThrowIfNull(factory);
-        _keyWrapperFactory = factory;
-        return this;
+        return UseKeyWrapper(ServiceDescriptor.Singleton(factory));
     }
 
     /// <summary>Stores wrapped root keys in a custom store instead of the <c>__EncryptionKeys</c> table.</summary>
     public EncryptionBuilder UseRootKeyStore(Func<IServiceProvider, IRootKeyStore> factory)
     {
         ArgumentNullException.ThrowIfNull(factory);
-        _rootKeyStoreFactory = factory;
-        return this;
-    }
-
-    /// <summary>Supplies root keys from a custom provider.</summary>
-    public EncryptionBuilder UseRootKeyProvider(Func<IServiceProvider, IRootKeyProvider> factory)
-    {
-        ArgumentNullException.ThrowIfNull(factory);
-        _rootKeyProviderFactory = factory;
+        _rootKeyStore = ServiceDescriptor.Singleton(factory);
         return this;
     }
 
@@ -82,7 +77,7 @@ public sealed class EncryptionBuilder
     /// </summary>
     public EncryptionBuilder CreateRootKeyIfMissing(bool value = true)
     {
-        _createRootKeyIfMissing = value;
+        _settings = _settings with { CreateRootKeyIfMissing = value };
         return this;
     }
 
@@ -92,41 +87,57 @@ public sealed class EncryptionBuilder
     /// </summary>
     public EncryptionBuilder UseDataKeyVersion(uint version)
     {
-        _dataKeyVersion = version;
+        _settings = _settings with { DataKeyVersion = version };
         return this;
     }
 
-    internal uint DataKeyVersion => _dataKeyVersion;
-
-    internal Func<IServiceProvider, IRootKeyProvider> BuildRootKeyProviderFactory()
+    /// <summary>
+    /// Checks the key store for a root key rotated by another instance every <paramref name="interval"/> (default: off).
+    /// Without it an instance switches to a new root key when it reads a value encrypted with it, or on restart,
+    /// so instances that only write keep using the previous root key until then. Each check is one key store read;
+    /// the key management service is called only when there is a new root key.
+    /// </summary>
+    public EncryptionBuilder RefreshRootKeysEvery(TimeSpan interval)
     {
-        var configured = (_staticKeys.Count > 0 ? 1 : 0) + (_keyWrapperFactory != null ? 1 : 0) + (_rootKeyProviderFactory != null ? 1 : 0);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(interval, TimeSpan.Zero);
+        _settings = _settings with { RootKeyRefreshInterval = interval };
+        return this;
+    }
+
+    /// <summary>Supplies root keys from a custom provider (tests).</summary>
+    internal EncryptionBuilder UseRootKeyProvider(Func<IServiceProvider, IRootKeyProvider> factory)
+    {
+        _rootKeyProvider = ServiceDescriptor.Singleton(factory);
+        return this;
+    }
+
+    internal void Register()
+    {
+        var configured = (_staticKeys.Count > 0 ? 1 : 0) + (_keyWrapper != null ? 1 : 0) + (_rootKeyProvider != null ? 1 : 0);
 
         if (configured == 0)
             throw new EntityFrameworkEncryptionException("Root key is not configured. Call UseKey(...), UseKeyWrapper(...) or a key management package, e.g. UseAwsKms(...)");
 
         if (configured > 1)
-            throw new EntityFrameworkEncryptionException("Only one root key source can be configured: UseKey(...), UseKeyWrapper(...) or UseRootKeyProvider(...)");
+            throw new EntityFrameworkEncryptionException("Only one root key source can be configured: UseKey(...) or UseKeyWrapper(...)");
 
-        if (_rootKeyProviderFactory != null)
-            return _rootKeyProviderFactory;
+        Services.TryAddSingleton(_settings);
 
-        if (_staticKeys.Count > 0)
+        if (_rootKeyProvider != null)
+            Services.TryAdd(_rootKeyProvider);
+        else if (_staticKeys.Count > 0)
+            Services.TryAddSingleton<IRootKeyProvider>(new StaticRootKeyProvider(new Dictionary<int, byte[]>(_staticKeys)));
+        else
         {
-            var provider = new StaticRootKeyProvider(new Dictionary<int, byte[]>(_staticKeys));
-            return _ => provider;
+            Services.TryAdd(_keyWrapper!);
+            Services.TryAdd(_rootKeyStore ?? ServiceDescriptor.Singleton<IRootKeyStore, DbContextRootKeyStore>());
+            Services.TryAddSingleton<IRootKeyProvider, WrappedRootKeyProvider>();
         }
+    }
 
-        Services.TryAddSingleton<DbContextRootKeyStore>();
-
-        var wrapperFactory = _keyWrapperFactory!;
-        var storeFactory = _rootKeyStoreFactory ?? (sp => sp.GetRequiredService<DbContextRootKeyStore>());
-        var createIfMissing = _createRootKeyIfMissing;
-
-        return sp => new WrappedRootKeyProvider(
-            wrapperFactory(sp),
-            storeFactory(sp),
-            sp.GetService<TimeProvider>() ?? TimeProvider.System,
-            createIfMissing);
+    private EncryptionBuilder UseKeyWrapper(ServiceDescriptor descriptor)
+    {
+        _keyWrapper = descriptor;
+        return this;
     }
 }

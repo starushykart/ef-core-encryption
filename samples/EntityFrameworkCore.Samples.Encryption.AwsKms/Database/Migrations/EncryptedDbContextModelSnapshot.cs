@@ -45,7 +45,7 @@ namespace EntityFrameworkCore.Samples.Encryption.AwsKms.Database.Migrations
                     b.ToTable("__EncryptionKeys", "public");
                 });
 
-            modelBuilder.Entity("EntityFrameworkCore.Samples.Encryption.AwsKms.Database.PasswordWithEncryptionWrapping", b =>
+            modelBuilder.Entity("EntityFrameworkCore.Samples.Encryption.AwsKms.Database.PasswordWithEncryption", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -67,7 +67,7 @@ namespace EntityFrameworkCore.Samples.Encryption.AwsKms.Database.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("EncryptedWrappedPasswords", "public");
+                    b.ToTable("EncryptedPasswords", "public");
                 });
 #pragma warning restore 612, 618
         }

@@ -3,7 +3,7 @@ using EntityFrameworkCore.Encrypted.Annotations;
 
 namespace EntityFrameworkCore.Samples.Encryption.AwsKms.Database;
 
-public class PasswordWithEncryptionWrapping
+public class PasswordWithEncryption
 {
     public Guid Id { get; set; }
     

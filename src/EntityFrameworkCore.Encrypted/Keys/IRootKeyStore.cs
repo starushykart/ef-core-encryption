@@ -8,4 +8,7 @@ public interface IRootKeyStore
 
     /// <returns><c>false</c> if a root key with the same id already exists (created concurrently).</returns>
     Task<bool> TryAddAsync(Type dbContextType, WrappedRootKey rootKey, CancellationToken cancellationToken);
+
+    /// <summary>Replaces the wrapped form of an existing root key, e.g. after rewrapping it with another wrapping key.</summary>
+    Task UpdateAsync(Type dbContextType, WrappedRootKey rootKey, CancellationToken cancellationToken);
 }

@@ -1,11 +1,13 @@
 using System.Buffers.Binary;
 using System.Security.Cryptography;
 using EntityFrameworkCore.Encrypted.Common.Exceptions;
+using EntityFrameworkCore.Encrypted.Common.Keys;
 using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Keys;
 using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.TestContext;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Xunit;
 
 namespace EntityFrameworkCore.Encrypted.Tests.Postgres;
@@ -171,6 +173,65 @@ public class KeyRotationTests
         RootKeyId(writtenByA).Should().Be(newRootKeyId);
         Decrypt(converterB, writtenByA).Should().Equal(1);
         RootKeyId(Encrypt(converterB, [2])).Should().Be(newRootKeyId, "B switches to the newer root key it has seen");
+    }
+
+    [Fact]
+    public async Task Should_switch_to_root_key_rotated_by_another_instance_on_refresh()
+    {
+        await using var instanceA = BuildWrapped();
+        await using var writeOnly = BuildWrapped();
+        await instanceA.InitializeEncryptionAsync();
+        await writeOnly.InitializeEncryptionAsync();
+        var converter = DocumentDbContext.GetConverter(writeOnly, nameof(Document.Blob));
+
+        var newRootKeyId = await instanceA.RotateRootKeyAsync<DocumentDbContext>();
+        RootKeyId(Encrypt(converter, [1])).Should().Be(1, "nothing encrypted with the new root key was read yet");
+
+        var unwrapsBefore = _wrapper.UnwrapCalls;
+        await writeOnly.GetRequiredService<DataKeyRing>().RefreshAsync(CancellationToken.None);
+        await writeOnly.GetRequiredService<DataKeyRing>().RefreshAsync(CancellationToken.None);
+
+        RootKeyId(Encrypt(converter, [1])).Should().Be(newRootKeyId);
+        (_wrapper.UnwrapCalls - unwrapsBefore).Should().Be(1, "the new root key is loaded once, checks without changes only read the store");
+    }
+
+    [Fact]
+    public async Task Should_refresh_root_keys_periodically_when_configured()
+    {
+        await using var instanceA = BuildWrapped();
+        await using var writeOnly = BuildWrapped(x => x.RefreshRootKeysEvery(TimeSpan.FromMilliseconds(50)));
+        await instanceA.InitializeEncryptionAsync();
+        await writeOnly.InitializeEncryptionAsync();
+
+        var hostedServices = writeOnly.GetServices<IHostedService>().ToList();
+        foreach (var service in hostedServices)
+            await service.StartAsync(CancellationToken.None);
+
+        var newRootKeyId = await instanceA.RotateRootKeyAsync<DocumentDbContext>();
+        var converter = DocumentDbContext.GetConverter(writeOnly, nameof(Document.Blob));
+
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (RootKeyId(Encrypt(converter, [1])) != newRootKeyId && DateTime.UtcNow < deadline)
+            await Task.Delay(20);
+
+        RootKeyId(Encrypt(converter, [1])).Should().Be(newRootKeyId);
+
+        foreach (var service in hostedServices)
+            await service.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task Should_keep_active_root_key_when_refresh_fails()
+    {
+        await using var provider = BuildWrapped();
+        await provider.InitializeEncryptionAsync();
+        _store.Unavailable = true;
+
+        await provider.GetRequiredService<DataKeyRing>().RefreshAsync(CancellationToken.None);
+
+        _store.Unavailable = false;
+        var converter = DocumentDbContext.GetConverter(provider, nameof(Document.Blob));
+        RootKeyId(Encrypt(converter, [1])).Should().Be(1);
     }
 
     [Fact]

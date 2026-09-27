@@ -27,4 +27,17 @@ public sealed class InMemoryRootKeyStore : IRootKeyStore
         lock (_keys)
             return Task.FromResult(_keys.TryAdd((dbContextType, rootKey.Id), rootKey));
     }
+
+    public Task UpdateAsync(Type dbContextType, WrappedRootKey rootKey, CancellationToken cancellationToken)
+    {
+        lock (_keys)
+        {
+            if (!_keys.ContainsKey((dbContextType, rootKey.Id)))
+                throw new InvalidOperationException($"Root key {rootKey.Id} not found");
+
+            _keys[(dbContextType, rootKey.Id)] = rootKey;
+        }
+
+        return Task.CompletedTask;
+    }
 }

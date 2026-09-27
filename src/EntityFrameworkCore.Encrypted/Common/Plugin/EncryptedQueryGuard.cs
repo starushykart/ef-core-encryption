@@ -42,7 +42,7 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
             foreach (var entityType in model.GetEntityTypes())
             foreach (var property in entityType.GetProperties())
             {
-                if (property.GetValueConverter() is not (StringEncryptionConverter or BinaryEncryptionConverter))
+                if (property.GetValueConverter() is not IEncryptionConverter)
                     continue;
 
                 if (!result._byType.TryGetValue(entityType.ClrType, out var byName))

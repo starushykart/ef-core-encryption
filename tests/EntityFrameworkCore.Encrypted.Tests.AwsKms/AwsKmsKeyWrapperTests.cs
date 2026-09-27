@@ -1,4 +1,5 @@
 using Amazon.KeyManagementService;
+using Amazon.KeyManagementService.Model;
 using EntityFrameworkCore.Encrypted.Common.Storage;
 using EntityFrameworkCore.Encrypted.Tests.AwsKms.Common;
 using EntityFrameworkCore.Encrypted.Tests.AwsKms.Common.Extensions;
@@ -24,6 +25,7 @@ public class AwsKmsKeyWrapperTests(
 {
     private const string GenerateDataKey = nameof(IAmazonKeyManagementService.GenerateDataKeyAsync);
     private const string Decrypt = nameof(IAmazonKeyManagementService.DecryptAsync);
+    private const string ReEncrypt = nameof(IAmazonKeyManagementService.ReEncryptAsync);
 
     [Fact]
     public async Task Should_generate_root_key_with_kms_on_first_start()
@@ -133,6 +135,43 @@ public class AwsKmsKeyWrapperTests(
         var act = () => billing.InitializeEncryptionAsync();
 
         await act.Should().ThrowAsync<AmazonKeyManagementServiceException>();
+    }
+
+    [Fact]
+    public async Task Should_move_root_keys_to_another_kms_key()
+    {
+        var kmsClient = Common.Extensions.TestsExtensions.CreateLocalstackKmsClient(localstack);
+        var oldKey = (await kmsClient.CreateKeyAsync(new CreateKeyRequest())).KeyMetadata;
+        var newKey = (await kmsClient.CreateKeyAsync(new CreateKeyRequest())).KeyMetadata;
+        var original = Fakers.PasswordFaker.Generate();
+
+        var (before, _) = BuildProvider(x => x.WithKeyId(oldKey.KeyId));
+        await using (before)
+        {
+            await using (var scope = before.CreateAsyncScope())
+            {
+                var context = scope.ServiceProvider.GetRequiredService<TestDbContext>();
+                context.Add(original);
+                await context.SaveChangesAsync();
+            }
+
+            await before.RotateRootKeyAsync<TestDbContext>();
+        }
+
+        var (moved, kms) = BuildProvider(x => x.WithKeyId(newKey.KeyId));
+        await using (moved)
+            (await moved.RewrapRootKeysAsync<TestDbContext>()).Should().Be(2);
+
+        kms[Op(ReEncrypt)].Should().Be(2);
+        (await GetStoredKeysAsync()).Should().OnlyContain(x => x.WrappingKeyId == newKey.Arn);
+
+        await kmsClient.DisableKeyAsync(new DisableKeyRequest { KeyId = oldKey.KeyId });
+
+        var (restarted, _) = BuildProvider(x => x.WithKeyId(newKey.KeyId));
+        await using var _ = restarted;
+        await using var restartedScope = restarted.CreateAsyncScope();
+        original.AssertPasswordEncryption(await restartedScope.ServiceProvider.GetRequiredService<TestDbContext>()
+            .Passwords.SingleAsync(x => x.Id == original.Id));
     }
 
     protected override void Configure(IServiceCollection services)

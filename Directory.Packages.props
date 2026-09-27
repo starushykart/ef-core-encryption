@@ -5,6 +5,7 @@
     </PropertyGroup>
 
     <ItemGroup Label="EF Core">
+        <!-- not referenced directly: pins the version brought transitively by Relational and Npgsql -->
         <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.12" />
         <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12" />
         <!-- pinned so Npgsql does not bring an older Relational version transitively -->
@@ -28,7 +29,6 @@
 
     <ItemGroup Label="Tests">
         <PackageVersion Include="Bogus" Version="35.6.5" />
-        <PackageVersion Include="coverlet.collector" Version="10.0.1" />
         <PackageVersion Include="coverlet.msbuild" Version="10.0.1" />
         <!-- 7.x is the last Apache-2.0 licensed version; 8.x requires a commercial license -->
         <PackageVersion Include="FluentAssertions" Version="7.2.2" />

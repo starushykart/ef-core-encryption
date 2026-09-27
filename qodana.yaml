@@ -4,4 +4,4 @@ profile:
 
 linter: jetbrains/qodana-dotnet:latest
 dotnet:
-  solution: EntityFrameworkCore.Encrypted.sln
+  solution: EntityFrameworkCore.Encrypted.slnx
