@@ -3,6 +3,7 @@ using System;
 using EntityFrameworkCore.Samples.Encryption.AesWrapping.Database;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace EntityFrameworkCore.Samples.Encryption.AesWrapping.Database.Migrations
 {
     [DbContext(typeof(EncryptedDbContext))]
-    partial class EncryptedWrappedDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260927141814_AddMaxLengthConstraints")]
+    partial class AddMaxLengthConstraints
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

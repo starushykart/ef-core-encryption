@@ -1,0 +1,22 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="global.json" />
+    <File Path="README.md" />
+  </Folder>
+  <Folder Name="/samples/">
+    <File Path="docker-compose.yml" />
+    <Project Path="samples/EntityFrameworkCore.Samples.Encryption.Aes/EntityFrameworkCore.Samples.Encryption.Aes.csproj" />
+    <Project Path="samples/EntityFrameworkCore.Samples.Encryption.AesWrapping/EntityFrameworkCore.Samples.Encryption.AesWrapping.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <File Path="src/Directory.Build.props" />
+    <Project Path="src/EntityFrameworkCore.Encrypted.Postgres.AwsWrapping/EntityFrameworkCore.Encrypted.Postgres.AwsWrapping.csproj" />
+    <Project Path="src/EntityFrameworkCore.Encrypted/EntityFrameworkCore.Encrypted.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/EntityFrameworkCore.Encrypted.Tests.Postgres.AwsWrapping/EntityFrameworkCore.Encrypted.Tests.Postgres.AwsWrapping.csproj" />
+    <Project Path="tests/EntityFrameworkCore.Encrypted.Tests.Postgres/EntityFrameworkCore.Encrypted.Tests.Postgres.csproj" />
+  </Folder>
+</Solution>

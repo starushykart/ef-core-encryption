@@ -17,7 +17,7 @@
       - "5432:5432"
   
   localstack:
-    image: localstack/localstack:stable
+    image: localstack/localstack:4.14.0
     container_name: db-encryption-localstack
     hostname: localstack
     healthcheck:
