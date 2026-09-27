@@ -4,8 +4,8 @@ namespace EntityFrameworkCore.Encrypted.Tests.Postgres.AwsWrapping.Common.Fixtur
 
 public class LocalstackContainerFixture : IAsyncLifetime
 {
-    private readonly LocalStackContainer _container = new LocalStackBuilder()
-        .WithImage("localstack/localstack:latest")
+    // 4.15+ requires a paid LOCALSTACK_AUTH_TOKEN; 4.14 is the last free community release
+    private readonly LocalStackContainer _container = new LocalStackBuilder("localstack/localstack:4.14.0")
         .WithEnvironment("SERVICES", "kms")
         .WithName($"ef_core_encrypted_localstack_{Guid.NewGuid()}")
         .WithCleanUp(true)

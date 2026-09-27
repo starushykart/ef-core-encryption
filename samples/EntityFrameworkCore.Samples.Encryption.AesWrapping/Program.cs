@@ -54,8 +54,7 @@ app.UseSwaggerUI();
 app.UseHttpsRedirection();
 
 app.MapGet("/passwords", (EncryptedDbContext context, CancellationToken ct)
-        => context.EncryptedWrappedPasswords.ToListAsync(ct))
-    .WithOpenApi();
+        => context.EncryptedWrappedPasswords.ToListAsync(ct));
 
 app.MapPost("/passwords", async (string password, EncryptedDbContext context, CancellationToken ct) =>
     {
@@ -67,7 +66,6 @@ app.MapPost("/passwords", async (string password, EncryptedDbContext context, Ca
         });
         
         await context.SaveChangesAsync(ct);
-    })
-    .WithOpenApi();
+    });
 
 app.Run();

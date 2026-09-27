@@ -1,9 +1,6 @@
 <Project>
-    <PropertyGroup>
-        <ImplicitUsings>enable</ImplicitUsings>
-        <Nullable>enable</Nullable>
-    </PropertyGroup>
-    
+    <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
     <PropertyGroup>
         <IsPackable>true</IsPackable>
         <PublishRepositoryUrl>true</PublishRepositoryUrl>
@@ -18,5 +15,5 @@
         <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
         <DebugType>embedded</DebugType>
     </PropertyGroup>
-    
+
 </Project>

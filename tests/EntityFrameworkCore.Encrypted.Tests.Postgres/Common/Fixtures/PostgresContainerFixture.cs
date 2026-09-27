@@ -5,8 +5,7 @@ namespace EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Fixtures;
 
 public class PostgresContainerFixture : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder()
-        .WithImage("postgres:latest")
+    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:latest")
         .WithName($"ef_core_encrypted_postgres_{Guid.NewGuid()}")
         .WithCleanUp(true)
         .Build();
