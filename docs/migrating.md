@@ -57,6 +57,43 @@ It's a singleton and can take dependencies from the container. You only need to 
 
 For converted properties, return the value as it was stored before encryption. For an enum stored as text that's `"Active"`, not the enum; the library applies your conversion afterwards.
 
+### Example: plain AES-256
+
+A common setup: AES-256-CBC with a random IV, stored as Base64 of the IV followed by the ciphertext. This is also how version 1.x of this library stored values, so you can use it to upgrade from 1.x.
+
+```csharp
+public sealed class Aes256CbcLegacyDecryptor(IConfiguration configuration) : ILegacyDecryptor
+{
+    private static readonly UTF8Encoding StrictUtf8 = new(false, throwOnInvalidBytes: true);
+    private readonly byte[] _key = Convert.FromBase64String(configuration["Encryption:LegacyKey"]!);
+
+    public string? Decrypt(string storedValue, LegacyValueContext context)
+    {
+        var buffer = new byte[storedValue.Length];
+
+        // the IV plus at least one block, whole blocks only
+        if (!Convert.TryFromBase64String(storedValue, buffer, out var length) || length < 32 || length % 16 != 0)
+            return null;
+
+        try
+        {
+            using var aes = Aes.Create();
+            aes.Key = _key;
+            return StrictUtf8.GetString(aes.DecryptCbc(buffer.AsSpan(16, length - 16), buffer.AsSpan(0, 16)));
+        }
+        catch (Exception ex) when (ex is CryptographicException or ArgumentException)
+        {
+            return null;   // not this format, or another key
+        }
+    }
+}
+```
+
+The [static key sample](samples#migrating-from-plain-aes-256) runs this migration end to end.
+
+{: .note }
+CBC isn't authenticated, so the decryptor can't be completely sure a value is its own. The padding and UTF-8 checks reject almost everything else. To be safe, don't change `UseDataKeyVersion` while the migration is running.
+
 ## Columns that were stored in plaintext
 
 There's a built-in decryptor for that:

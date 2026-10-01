@@ -46,7 +46,7 @@ Encrypted values can't be compared in the database, because the same value encry
 
 ## Samples
 
-There are two small ASP.NET Core apps in [`samples`](samples). The [static key sample](samples/EntityFrameworkCore.Samples.Encryption.Aes) shows the different kinds of encrypted properties, how querying works and a blind index. The [AWS KMS sample](samples/EntityFrameworkCore.Samples.Encryption.AwsKms) walks through key rotation, re-encryption and OpenTelemetry. Start PostgreSQL and LocalStack with `docker compose up -d`, then `dotnet run` in either of them. The [samples page](https://starushykart.github.io/ef-core-encryption/samples) has step-by-step walkthroughs.
+There are two small ASP.NET Core apps in [`samples`](samples). The [static key sample](samples/EntityFrameworkCore.Samples.Encryption.Aes) shows the different kinds of encrypted properties, how querying works, a blind index, and migrating a table encrypted with plain AES-256. The [AWS KMS sample](samples/EntityFrameworkCore.Samples.Encryption.AwsKms) walks through key rotation, re-encryption and OpenTelemetry. Start PostgreSQL and LocalStack with `docker compose up -d`, then `dotnet run` in either of them. The [samples page](https://starushykart.github.io/ef-core-encryption/samples) has step-by-step walkthroughs.
 
 ## Building from source
 
