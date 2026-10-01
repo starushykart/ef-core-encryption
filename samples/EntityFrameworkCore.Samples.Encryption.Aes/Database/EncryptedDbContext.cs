@@ -7,8 +7,11 @@ public sealed class EncryptedDbContext(DbContextOptions<EncryptedDbContext> opti
 {
     public DbSet<Customer> Customers => Set<Customer>();
 
+    public DbSet<Contract> Contracts => Set<Contract>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
-        => modelBuilder.Entity<Customer>(e =>
+    {
+        modelBuilder.Entity<Customer>(e =>
         {
             e.Property(x => x.Phone).IsEncrypted();
 
@@ -19,4 +22,7 @@ public sealed class EncryptedDbContext(DbContextOptions<EncryptedDbContext> opti
             e.ComplexProperty(x => x.Address);
             e.HasIndex(x => x.Name);
         });
+
+        modelBuilder.Entity<Contract>().HasIndex(x => x.Number).IsUnique();
+    }
 }

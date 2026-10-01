@@ -27,7 +27,7 @@ Both samples create their database on startup, so there's nothing else to set up
 
 [`samples/EntityFrameworkCore.Samples.Encryption.Aes`](https://github.com/starushykart/ef-core-encryption/tree/main/samples/EntityFrameworkCore.Samples.Encryption.Aes)
 
-This one uses a static key from `appsettings.json` and shows most of the ways you can mark properties as encrypted. Its `Customer` entity has:
+This one uses a static key from `appsettings.json`. It shows most of the ways you can mark properties as encrypted, and [migrating a table encrypted with plain AES-256](#migrating-from-plain-aes-256). Its `Customer` entity has:
 
 - `Name`, which is left as plain text so you can search and sort by it
 - `Email`, encrypted with the `[Encrypted]` attribute
@@ -79,6 +79,37 @@ curl "http://localhost:5152/customers/by-phone?phone=%2B1%20555%200100"
 If you look at the table again, you'll see the `Email_Index` column holding a hash rather than the email.
 
 The health check is at `http://localhost:5152/health`, and in development the OpenAPI document is at `/openapi/v1.json`.
+
+### Migrating from plain AES-256
+
+The sample also has a `Contracts` table that plays the part of existing data. On first start it's filled the way a previous version of the app would have done it: IBANs encrypted with plain AES-256-CBC under an old key (`Encryption:LegacyKey`), without the library. The app reads them through a [legacy decryptor](migrating) until they're migrated.
+
+The contracts read like any other data, old or new:
+
+```bash
+curl http://localhost:5152/contracts
+curl -X POST "http://localhost:5152/contracts?number=C-004&iban=NL91ABNA0417164300"
+```
+
+Look at what's stored. The first three are the old format, the new one starts with `AQAB`, the library's header:
+
+```bash
+curl http://localhost:5152/contracts/stored
+```
+
+Key usage counts the old values as having no root key:
+
+```bash
+curl http://localhost:5152/keys/usage
+```
+
+Migrate them. This runs in batches and would be safe while the app is serving traffic:
+
+```bash
+curl -X POST http://localhost:5152/keys/re-encrypt
+```
+
+Check the usage and the stored values again: everything is in the library's format now. In a real app, this is the point where you'd remove `UseLegacyDecryptor` and retire the old key.
 
 ## AWS KMS sample
 

@@ -2,16 +2,21 @@ using EntityFrameworkCore.Encrypted;
 using EntityFrameworkCore.Encrypted.Common.Exceptions;
 using EntityFrameworkCore.Samples.Encryption.Aes.Common;
 using EntityFrameworkCore.Samples.Encryption.Aes.Database;
+using EntityFrameworkCore.Samples.Encryption.Aes.Legacy;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
 builder.Services.AddHostedService<MigrationHostedService>();
+builder.Services.AddHostedService<LegacyContractsSeeder>();
 
-// static AES-256 key from configuration; add a key with a higher id to rotate: UseKey(newKey, id: 2)
+// static AES-256 key from configuration; add a key with a higher id to rotate: UseKey(newKey, id: 2).
+// The legacy decryptor reads contracts encrypted by the previous code until they're migrated (POST /keys/re-encrypt)
 builder.Services
-    .AddEncryption(x => x.UseKey(builder.Configuration["Encryption:Key"]!))
+    .AddEncryption(x => x
+        .UseKey(builder.Configuration["Encryption:Key"]!)
+        .UseLegacyDecryptor<Aes256CbcLegacyDecryptor>())
     .AddDbContext<EncryptedDbContext>(x => x
         .UseNpgsql(builder.Configuration["Database:ConnectionString"])
         .UseEncryption());
@@ -74,6 +79,35 @@ app.MapGet("/customers/by-phone", async (string phone, EncryptedDbContext contex
     }
 });
 
+// migrating from the previous encryption: contracts were seeded with IBANs encrypted with plain AES-256
+
+// old and new values read the same way: the legacy decryptor handles values that aren't in the library's format
+app.MapGet("/contracts", (EncryptedDbContext context, CancellationToken ct)
+    => context.Contracts.OrderBy(x => x.Number).ToListAsync(ct));
+
+// new contracts are written in the library's format
+app.MapPost("/contracts", async (string number, string iban, EncryptedDbContext context, CancellationToken ct) =>
+{
+    var contract = new Contract { Id = Guid.NewGuid(), Number = number, Iban = iban };
+    context.Add(contract);
+    await context.SaveChangesAsync(ct);
+    return Results.Created($"/contracts/{contract.Id}", contract);
+});
+
+// what's stored: the previous code's Base64 AES-CBC values, or the library's format
+app.MapGet("/contracts/stored", (EncryptedDbContext context, CancellationToken ct)
+    => context.Database
+        .SqlQuery<StoredContract>($"""SELECT "Number", "Iban" FROM "Contracts" ORDER BY "Number" """)
+        .ToListAsync(ct));
+
+// values per column and key: legacy values have no root key; when none are left, remove UseLegacyDecryptor
+app.MapGet("/keys/usage", (IServiceProvider services, CancellationToken ct)
+    => services.GetKeyUsageAsync<EncryptedDbContext>(ct));
+
+// migrates legacy values (and values of older keys) to the library's format, in batches, while the app runs
+app.MapPost("/keys/re-encrypt", (IServiceProvider services, CancellationToken ct)
+    => services.ReEncryptAsync<EncryptedDbContext>(cancellationToken: ct));
+
 app.Run();
 
 internal sealed record CreateCustomer(
@@ -84,3 +118,5 @@ internal sealed record CreateCustomer(
     string Street,
     string City,
     string? PassportScanBase64);
+
+internal sealed record StoredContract(string Number, string Iban);

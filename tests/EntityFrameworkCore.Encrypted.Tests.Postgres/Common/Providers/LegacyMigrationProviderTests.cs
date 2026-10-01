@@ -85,6 +85,42 @@ public abstract class LegacyMigrationProviderTests(ITestOutputHelper helper) : I
     }
 
     [Fact]
+    public async Task Should_migrate_values_encrypted_with_plain_aes_256()
+    {
+        // AES-256-CBC with a random IV, Base64 of [IV][ciphertext]: also the format of EntityFrameworkCore.Encrypted 1.x
+        var customers = Enumerable.Range(0, 40)
+            .Select(i => new LegacyCustomer { Id = Guid.NewGuid(), Name = $"customer {i}", Email = $"customer{i}@example.com", Status = (Level)(i % 2) })
+            .ToList();
+
+        await using (var plain = CreatePlainContext())
+        {
+            plain.AddRange(customers.Select(x => new PlainCustomer
+            {
+                Id = x.Id,
+                Name = x.Name,
+                Email = Aes256Cbc.Encrypt(x.Email!, _oldKey),
+                Status = Aes256Cbc.Encrypt(x.Status.ToString(), _oldKey)
+            }));
+            await plain.SaveChangesAsync();
+        }
+
+        await using var migrating = Build(new Aes256CbcDecryptor(_oldKey));
+        var added = await AddAsync(migrating, new LegacyCustomer { Id = Guid.NewGuid(), Name = "new", Email = "new@example.com", Status = Level.Premium });
+
+        (await ReadAllAsync(migrating)).Should().BeEquivalentTo(customers.Append(added));
+        (await migrating.ReEncryptAsync<LegacyDbContext>()).Should().Be(new ReEncryptionResult(ReEncrypted: 80, Skipped: 0, Invalid: 0));
+
+        await using var migrated = Build(legacy: null);
+        await migrated.InitializeEncryptionAsync();
+        (await ReadAllAsync(migrated)).Should().BeEquivalentTo(customers.Append(added));
+        (await migrated.GetKeyUsageAsync<LegacyDbContext>()).Should().OnlyContain(x => x.RootKeyId == 1);
+
+        await using var verify = migrated.CreateAsyncScope();
+        (await verify.ServiceProvider.GetRequiredService<LegacyDbContext>().Customers.SingleAsync(x => x.Email == "customer7@example.com"))
+            .Name.Should().Be("customer 7", "the blind index is filled while migrating");
+    }
+
+    [Fact]
     public async Task Should_migrate_plaintext_columns()
     {
         var plain = await SeedLegacyAsync(count: 5, encrypt: false);
@@ -251,6 +287,43 @@ public abstract class LegacyMigrationProviderTests(ITestOutputHelper helper) : I
                 return null;
             }
         }
+    }
+
+    /// <summary>Plain AES-256-CBC with PKCS7 padding, as EntityFrameworkCore.Encrypted 1.x stored strings.</summary>
+    private static class Aes256Cbc
+    {
+        public static string Encrypt(string value, byte[] key)
+        {
+            using var aes = Aes.Create();
+            aes.Key = key;
+            aes.GenerateIV();
+            return Convert.ToBase64String([..aes.IV, ..aes.EncryptCbc(Encoding.UTF8.GetBytes(value), aes.IV)]);
+        }
+
+        public static string? TryDecrypt(string stored, byte[] key)
+        {
+            var buffer = new byte[stored.Length];
+
+            if (!Convert.TryFromBase64String(stored, buffer, out var length) || length < 32 || length % 16 != 0)
+                return null;
+
+            try
+            {
+                using var aes = Aes.Create();
+                aes.Key = key;
+                return new UTF8Encoding(false, true).GetString(aes.DecryptCbc(buffer.AsSpan(16, length - 16), buffer.AsSpan(0, 16)));
+            }
+            catch (Exception ex) when (ex is CryptographicException or ArgumentException)
+            {
+                return null;
+            }
+        }
+    }
+
+    private sealed class Aes256CbcDecryptor(byte[] key) : ILegacyDecryptor
+    {
+        public string? Decrypt(string storedValue, LegacyValueContext context)
+            => Aes256Cbc.TryDecrypt(storedValue, key);
     }
 
     private sealed class OldDecryptor(byte[] key) : ILegacyDecryptor
