@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace EntityFrameworkCore.Encrypted.Annotations;
 
+/// <summary>Marks properties as encrypted and adds blind indexes.</summary>
 public static class PropertyBuilderExtensions
 {
     /// <summary>Encrypts a <c>string</c> or <c>byte[]</c> property, or one converted to them with <c>HasConversion</c>.</summary>

@@ -121,6 +121,35 @@ public abstract class LegacyMigrationProviderTests(ITestOutputHelper helper) : I
     }
 
     [Fact]
+    public async Task Should_read_values_of_a_newer_data_key_version_before_asking_the_legacy_decryptor()
+    {
+        // a newer deployment writes with data key version 1 while an older one, still migrating, reads with version 0
+        await using var newer = Build(new GarbageDecryptor(), dataKeyVersion: 1);
+        var customer = await AddAsync(newer, new LegacyCustomer { Id = Guid.NewGuid(), Name = "new", Email = "new@example.com", Photo = [1, 2], Status = Level.Premium });
+
+        await using var older = Build(new GarbageDecryptor());
+
+        (await ReadAllAsync(older)).Should().ContainSingle().Which.Should().BeEquivalentTo(customer, "the legacy decryptor doesn't authenticate");
+    }
+
+    [Fact]
+    public async Task Should_read_binary_plaintext_that_starts_like_the_library_format()
+    {
+        // starts with an Int64 of 1: the format byte, then root key id 0
+        byte[] photo = [1, 0, 0, 0, 0, 0, 0, 0, ..Enumerable.Repeat((byte)7, 40)];
+
+        await using (var plain = CreatePlainContext())
+        {
+            plain.Add(new PlainCustomer { Id = Guid.NewGuid(), Name = "x", Photo = photo, Status = "Basic" });
+            await plain.SaveChangesAsync();
+        }
+
+        await using var provider = Build(LegacyDecryptor.Plaintext);
+
+        (await ReadAllAsync(provider)).Should().ContainSingle().Which.Photo.Should().Equal(photo);
+    }
+
+    [Fact]
     public async Task Should_migrate_plaintext_columns()
     {
         var plain = await SeedLegacyAsync(count: 5, encrypt: false);
@@ -180,11 +209,11 @@ public abstract class LegacyMigrationProviderTests(ITestOutputHelper helper) : I
         GC.SuppressFinalize(this);
     }
 
-    private ServiceProvider Build(ILegacyDecryptor? legacy)
+    private ServiceProvider Build(ILegacyDecryptor? legacy, uint dataKeyVersion = 0)
         => new ServiceCollection()
             .AddEncryption(x =>
             {
-                x.UseKey(_key);
+                x.UseKey(_key).UseDataKeyVersion(dataKeyVersion);
 
                 if (legacy != null)
                     x.UseLegacyDecryptor(legacy);
@@ -324,6 +353,14 @@ public abstract class LegacyMigrationProviderTests(ITestOutputHelper helper) : I
     {
         public string? Decrypt(string storedValue, LegacyValueContext context)
             => Aes256Cbc.TryDecrypt(storedValue, key);
+    }
+
+    /// <summary>Like an unauthenticated scheme: "decrypts" anything.</summary>
+    private sealed class GarbageDecryptor : ILegacyDecryptor
+    {
+        public string Decrypt(string storedValue, LegacyValueContext context) => "garbage";
+
+        public byte[] Decrypt(byte[] storedValue, LegacyValueContext context) => [0];
     }
 
     private sealed class OldDecryptor(byte[] key) : ILegacyDecryptor

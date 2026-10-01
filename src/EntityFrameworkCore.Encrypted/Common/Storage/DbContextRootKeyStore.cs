@@ -1,4 +1,5 @@
 using System.Data.Common;
+using System.Transactions;
 using EntityFrameworkCore.Encrypted.Common.Exceptions;
 using EntityFrameworkCore.Encrypted.Keys;
 using Microsoft.EntityFrameworkCore;
@@ -76,6 +77,10 @@ internal sealed class DbContextRootKeyStore(IServiceScopeFactory scopeFactory) :
 
     private async Task<T> InContextAsync<T>(Type dbContextType, Func<DbContext, Task<T>> action)
     {
+        // keys may be loaded lazily inside the application's TransactionScope: a rollback would remove a created key
+        // that is already in use, and a second connection would need a distributed transaction
+        using var suppress = new TransactionScope(TransactionScopeOption.Suppress, TransactionScopeAsyncFlowOption.Enabled);
+
         await using var scope = scopeFactory.CreateAsyncScope();
         await using var owned = OwnedContext.Create(scope.ServiceProvider, dbContextType);
 

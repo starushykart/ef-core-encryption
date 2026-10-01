@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace EntityFrameworkCore.Encrypted;
 
+/// <summary>Configures where root keys come from and how they are used. See <c>AddEncryption</c>.</summary>
 public sealed class EncryptionBuilder
 {
     private readonly Dictionary<int, byte[]> _staticKeys = [];
@@ -21,6 +22,7 @@ public sealed class EncryptionBuilder
     internal EncryptionBuilder(IServiceCollection services)
         => Services = services;
 
+    /// <summary>The service collection, for extensions such as key management packages.</summary>
     public IServiceCollection Services { get; }
 
     /// <summary>

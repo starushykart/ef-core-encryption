@@ -95,9 +95,30 @@ SQLite locks the whole database while it saves. If the root key doesn't exist ye
 
 The key table doesn't exist yet. Add a migration after enabling encryption. If migrations run during startup, the library notices the missing table and loads keys on first use instead, so you'll only see this error at runtime when the database really isn't migrated.
 
+## "... is part of a key or foreign key and can't be encrypted"
+
+Also: "... is a concurrency token", "... can't have a unique index" and "... has seed data (HasData) for encrypted properties". These mappings need the database to compare stored values, and encrypted values differ every time. [What can't be encrypted](encrypting-properties#what-cant-be-encrypted) has the alternatives.
+
+## "The model of ... wasn't built with encryption"
+
+The context uses `UseModel(...)`, for example a compiled model from `dotnet ef dbcontext optimize`. Encrypted properties are configured while the model is built, so remove `UseModel` for contexts with encryption.
+
+## "... is encrypted and can't be copied to another column in ExecuteUpdate"
+
+`ExecuteUpdate` sets a column from an encrypted one, or an encrypted column from another column. The database can't encrypt or decrypt, so load the entities and use `SaveChanges`.
+
+## "... is configured with a shared DbConnection instance"
+
+`ReEncryptAsync`, `GetKeyUsageAsync` and `RebuildBlindIndexesAsync` read on one connection while they write on another. Configure the context with a connection string instead of a `DbConnection` instance.
+
+## "... already has the maximum number of root keys"
+
+Root key ids are stored in two bytes of every value, so a context can have up to 65,535 root keys. That's far more than regular rotation needs. If you got here through automation that rotates too often, rotate less often, or rotate the data key version instead.
+
 ## Limitations
 
 - **Relational providers only.** The library relies on EF Core's relational model; Cosmos DB and the in-memory provider aren't supported.
 - **No searching in the database beyond equality.** That's the trade-off of random nonces. [Blind indexes](blind-indexes) cover equality lookups, and [Queries](queries) covers the rest.
 - **No row binding.** A value can't be moved to another column, but it can be swapped with the value of the same column in another row.
 - **Raw SQL isn't checked.** `FromSql` and `ExecuteSql` run as written, and raw SQL sees ciphertext.
+- **Keys are per context type.** Every context type has its own root keys and blind index key, read from the database the context type connects to through dependency injection. A database per tenant behind one context type isn't supported: all tenants would share the keys found in one of them. Use one database for the key store, or a custom `IRootKeyStore`, and expect every tenant to share the same keys.

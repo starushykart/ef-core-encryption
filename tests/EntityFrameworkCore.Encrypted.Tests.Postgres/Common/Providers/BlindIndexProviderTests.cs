@@ -6,6 +6,7 @@ using EntityFrameworkCore.Encrypted.Common.Storage;
 using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Extensions;
 using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Keys;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -146,6 +147,20 @@ public abstract class BlindIndexProviderTests(ITestOutputHelper helper) : IAsync
     }
 
     [Fact]
+    public async Task Should_index_values_changed_by_other_interceptors()
+    {
+        // an application interceptor normalizing values runs after the one setting the blind index
+        await using var provider = Build(x => x.UseKeyWrapper(_ => _wrapper), new RemoveDashesInterceptor());
+        await AddPeopleAsync(provider);
+
+        await using var scope = provider.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<BlindIndexDbContext>();
+
+        (await db.People.SingleAsync(x => x.Ssn == "111223333")).Name.Should().Be("jane");
+        (await db.People.AnyAsync(x => x.Ssn == "111-22-3333")).Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Should_update_blind_index_with_execute_update()
     {
         await AddPeopleAsync(_provider);
@@ -280,10 +295,16 @@ public abstract class BlindIndexProviderTests(ITestOutputHelper helper) : IAsync
         GC.SuppressFinalize(this);
     }
 
-    private ServiceProvider Build(Action<EncryptionBuilder> configure)
+    private ServiceProvider Build(Action<EncryptionBuilder> configure, IInterceptor? interceptor = null)
         => new ServiceCollection()
             .AddEncryption(configure)
-            .AddDbContext<BlindIndexDbContext>(x => UseProvider(x.UseEncryption(), _connectionString))
+            .AddDbContext<BlindIndexDbContext>(x =>
+            {
+                UseProvider(x.UseEncryption(), _connectionString);
+
+                if (interceptor != null)
+                    x.AddInterceptors(interceptor);
+            })
             .AddXunitLogging(helper)
             .BuildServiceProvider(true);
 
@@ -358,3 +379,15 @@ public sealed record Contact
 }
 
 public enum PersonStatus { Pending, Active, Blocked }
+
+internal sealed class RemoveDashesInterceptor : SaveChangesInterceptor
+{
+    public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+        DbContextEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
+    {
+        foreach (var entry in eventData.Context!.ChangeTracker.Entries<Person>())
+            entry.Entity.Ssn = entry.Entity.Ssn?.Replace("-", "");
+
+        return ValueTask.FromResult(result);
+    }
+}

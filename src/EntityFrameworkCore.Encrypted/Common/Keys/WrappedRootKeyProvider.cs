@@ -44,6 +44,11 @@ internal sealed class WrappedRootKeyProvider(IKeyWrapper wrapper, IRootKeyStore 
         var stored = await GetRootKeysAsync(dbContextType, cancellationToken);
         var nextId = stored.Count == 0 ? 1 : stored.Max(x => x.Id) + 1;
 
+        // stored in 2 bytes of every value
+        if (nextId > ushort.MaxValue)
+            throw new EntityFrameworkEncryptionException(
+                $"{dbContextType.Name} already has the maximum number of root keys ({ushort.MaxValue})");
+
         return await CreateAsync(dbContextType, nextId, cancellationToken);
     }
 

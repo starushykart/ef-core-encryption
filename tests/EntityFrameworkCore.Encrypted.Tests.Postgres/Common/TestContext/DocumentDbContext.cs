@@ -54,6 +54,9 @@ public sealed class Document
     public string? Other { get; set; }
     public string? RenamedColumn { get; set; }
 
+    /// <summary>Not encrypted.</summary>
+    public string? Title { get; set; }
+
     [Encrypted(Label = "shared")]
     public string? SharedA { get; set; }
 

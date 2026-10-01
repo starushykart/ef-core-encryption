@@ -116,6 +116,14 @@ internal sealed class FieldEncryptor(DataKeyRing? keyRing, Type contextType, str
             ? Classify(decoded.AsSpan(0, length), legacy)
             : StoredFormat.Legacy;
 
+        // most likely in the library's format, from a deployment with a newer data key version: authenticated first
+        if (format == StoredFormat.Unclear && TryDecryptCurrent(decoded.AsSpan(0, length)) is { } current)
+        {
+            plaintext = Encoding.UTF8.GetString(current);
+            CryptographicOperations.ZeroMemory(current);
+            return true;
+        }
+
         plaintext = Call(format, () => legacy.Decrypt(stored, LegacyContext));
         return plaintext != null;
     }
@@ -129,7 +137,15 @@ internal sealed class FieldEncryptor(DataKeyRing? keyRing, Type contextType, str
         if (keyRing?.LegacyDecryptor is not { } legacy)
             return false;
 
-        plaintext = Call(Classify(stored, legacy), () => legacy.Decrypt(stored, LegacyContext));
+        var format = Classify(stored, legacy);
+
+        if (format == StoredFormat.Unclear && TryDecryptCurrent(stored) is { } current)
+        {
+            plaintext = current;
+            return true;
+        }
+
+        plaintext = Call(format, () => legacy.Decrypt(stored, LegacyContext));
         return plaintext != null;
     }
 
@@ -146,7 +162,8 @@ internal sealed class FieldEncryptor(DataKeyRing? keyRing, Type contextType, str
     // is never passed to the legacy decryptor, so tampering is still detected
     private StoredFormat Classify(ReadOnlySpan<byte> decoded, ILegacyDecryptor legacy)
     {
-        if (!Envelope.HasHeader(decoded))
+        // root key ids start at 1: e.g. binary plaintext starting with an Int64 of 1
+        if (!Envelope.HasHeader(decoded) || Envelope.ReadKeyId(decoded).RootKeyId == 0)
             return StoredFormat.Legacy;
 
         if (Envelope.ReadKeyId(decoded).DataKeyVersion <= keyRing!.DataKeyVersion)
@@ -155,6 +172,19 @@ internal sealed class FieldEncryptor(DataKeyRing? keyRing, Type contextType, str
         // a newer data key version than configured: a newer deployment, or legacy ciphertext. Plaintext would
         // return the ciphertext as the value, so only decryptors that recognize their own format are asked
         return legacy is PlaintextLegacyDecryptor ? StoredFormat.Current : StoredFormat.Unclear;
+    }
+
+    // a legacy scheme without authentication would return garbage for a value in the library's format
+    private byte[]? TryDecryptCurrent(ReadOnlySpan<byte> envelope)
+    {
+        try
+        {
+            return Decrypt(envelope);
+        }
+        catch (EntityFrameworkEncryptionException)
+        {
+            return null;
+        }
     }
 
     private T? Call<T>(StoredFormat format, Func<T?> decrypt) where T : class

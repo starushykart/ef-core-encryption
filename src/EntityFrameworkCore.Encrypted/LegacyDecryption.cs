@@ -24,6 +24,7 @@ public interface ILegacyDecryptor
 /// <param name="Label">Label of the encrypted column: <c>"{table}.{column}"</c> unless configured explicitly.</param>
 public sealed record LegacyValueContext(Type DbContextType, string Label);
 
+/// <summary>Built-in legacy decryptors.</summary>
 public static class LegacyDecryptor
 {
     /// <summary>

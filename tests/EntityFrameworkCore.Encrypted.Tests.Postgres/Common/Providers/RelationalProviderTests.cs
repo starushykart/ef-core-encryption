@@ -1,3 +1,4 @@
+using System.Transactions;
 using AwesomeAssertions;
 using EntityFrameworkCore.Encrypted.Annotations;
 using EntityFrameworkCore.Encrypted.Common.Storage;
@@ -26,6 +27,9 @@ public abstract class RelationalProviderTests(ITestOutputHelper helper) : IAsync
     protected abstract string CreateConnectionString();
 
     protected abstract void UseProvider(DbContextOptionsBuilder options, string connectionString);
+
+    /// <summary>Several connections in one TransactionScope, e.g. the key store's and the application's.</summary>
+    protected virtual bool SupportsConcurrentConnectionsInTransactionScope => true;
 
     public async ValueTask InitializeAsync()
     {
@@ -87,6 +91,63 @@ public abstract class RelationalProviderTests(ITestOutputHelper helper) : IAsync
         result.Should().Be(new ReEncryptionResult(ReEncrypted: 23, Skipped: 0, Invalid: 0));
         after.Should().OnlyContain(x => x.RootKeyId == 2);
         await AssertReadableAsync(_provider, notes, tags);
+    }
+
+    [Fact]
+    public async Task Should_re_encrypt_rows_with_precise_and_converted_keys()
+    {
+        // microseconds (the precision of every provider): lost if the key parameter isn't typed like the column
+        var at = new DateTime(2026, 10, 1, 12, 30, 45, DateTimeKind.Utc).AddTicks(1234560);
+        var readings = Enumerable.Range(0, 5)
+            .Select(i => new Reading { Sensor = new SensorId($"s{i}"), At = at.AddTicks(i * 10), Value = $"value {i}" })
+            .ToList();
+
+        await using (var scope = _provider.CreateAsyncScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<ProviderDbContext>();
+            context.AddRange(readings);
+            await context.SaveChangesAsync();
+        }
+
+        await _provider.RotateRootKeyAsync<ProviderDbContext>();
+
+        (await _provider.ReEncryptAsync<ProviderDbContext>(batchSize: 2)).Should().Be(new ReEncryptionResult(ReEncrypted: 5, Skipped: 0, Invalid: 0));
+        (await _provider.GetKeyUsageAsync<ProviderDbContext>()).Should().OnlyContain(x => x.RootKeyId == 2);
+
+        await using var verify = _provider.CreateAsyncScope();
+        (await verify.ServiceProvider.GetRequiredService<ProviderDbContext>().Readings.AsNoTracking().ToListAsync())
+            .Should().BeEquivalentTo(readings);
+    }
+
+    [Fact]
+    public async Task Should_keep_keys_created_inside_a_rolled_back_transaction_scope()
+    {
+        Assert.SkipUnless(SupportsConcurrentConnectionsInTransactionScope, "one connection at a time can write");
+        await ResetKeysAsync();
+
+        // keys aren't loaded yet: the root key is created on first use, inside the application's transaction
+        await using var provider = Build();
+
+        using (new TransactionScope(TransactionScopeAsyncFlowOption.Enabled))
+        {
+            await using var scope = provider.CreateAsyncScope();
+            var context = scope.ServiceProvider.GetRequiredService<ProviderDbContext>();
+            context.Add(new Note { Id = Guid.NewGuid(), Text = "rolled back", Author = new Author { Name = "a" } });
+            await context.SaveChangesAsync();
+        }
+
+        (await GetStoredKeysAsync()).Should().ContainSingle("the key store doesn't take part in the application's transaction");
+
+        var notes = new List<Note> { new() { Id = Guid.NewGuid(), Text = "kept", Author = new Author { Name = "b" } } };
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<ProviderDbContext>();
+            context.AddRange(notes);
+            await context.SaveChangesAsync();
+        }
+
+        await using var restarted = Build();
+        await AssertReadableAsync(restarted, notes);
     }
 
     [Fact]
@@ -245,6 +306,7 @@ public sealed class ProviderDbContext(DbContextOptions<ProviderDbContext> option
 {
     public DbSet<Note> Notes => Set<Note>();
     public DbSet<Tag> Tags => Set<Tag>();
+    public DbSet<Reading> Readings => Set<Reading>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -254,8 +316,28 @@ public sealed class ProviderDbContext(DbContextOptions<ProviderDbContext> option
             e.Property(x => x.Status).HasConversion<string>().IsEncrypted();
         });
         modelBuilder.Entity<Tag>().HasKey(x => new { x.Group, x.Name });
+        modelBuilder.Entity<Reading>(e =>
+        {
+            e.HasKey(x => new { x.Sensor, x.At });
+            e.Property(x => x.Sensor).HasConversion(x => x.Value, x => new SensorId(x)).HasMaxLength(20).IsUnicode(false);
+        });
     }
 }
+
+/// <summary>
+/// Key types whose parameters must be typed like the column: a high-precision timestamp (datetime2(7) on SQL Server),
+/// and a value-converted, non-Unicode string.
+/// </summary>
+public sealed class Reading
+{
+    public SensorId Sensor { get; set; }
+    public DateTime At { get; set; }
+
+    [Encrypted]
+    public string? Value { get; set; }
+}
+
+public readonly record struct SensorId(string Value);
 
 public sealed class Note
 {

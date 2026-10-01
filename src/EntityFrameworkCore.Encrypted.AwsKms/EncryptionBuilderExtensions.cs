@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace EntityFrameworkCore.Encrypted;
 
+/// <summary>Configures AWS KMS as the key management service.</summary>
 public static class EncryptionBuilderExtensions
 {
     /// <summary>

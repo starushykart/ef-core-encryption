@@ -12,4 +12,6 @@ public sealed class SqliteProviderTests(ITestOutputHelper helper) : RelationalPr
 
     protected override void UseProvider(DbContextOptionsBuilder options, string connectionString)
         => options.UseSqlite(connectionString);
+
+    protected override bool SupportsConcurrentConnectionsInTransactionScope => false;
 }
