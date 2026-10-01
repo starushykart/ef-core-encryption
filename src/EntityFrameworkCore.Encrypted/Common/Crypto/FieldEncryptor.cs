@@ -15,26 +15,42 @@ internal sealed class FieldEncryptor(DataKeyRing? keyRing, Type contextType, str
 
     public string Label => label;
 
-    public byte[] Encrypt(ReadOnlySpan<byte> plaintext)
+    /// <param name="envelope">Destination of <see cref="Envelope.GetLength"/> bytes.</param>
+    public void Encrypt(ReadOnlySpan<byte> plaintext, Span<byte> envelope)
     {
         var (keyId, key) = GetKeyRing().GetEncryptionKey(contextType);
-        return Envelope.Seal(key, keyId, _label, plaintext);
+        Envelope.Seal(key, keyId, _label, plaintext, envelope);
     }
 
-    public byte[] Decrypt(ReadOnlySpan<byte> envelope)
+    public byte[] Encrypt(ReadOnlySpan<byte> plaintext)
+    {
+        var envelope = new byte[Envelope.GetLength(plaintext.Length)];
+        Encrypt(plaintext, envelope);
+        return envelope;
+    }
+
+    /// <param name="plaintext">Destination of <see cref="Envelope.GetPlaintextLength"/> bytes.</param>
+    public void Decrypt(ReadOnlySpan<byte> envelope, Span<byte> plaintext)
     {
         var keyId = Envelope.ReadKeyId(envelope);
         var key = GetKeyRing().GetDecryptionKey(contextType, keyId);
 
         try
         {
-            return Envelope.Open(key, _label, envelope);
+            Envelope.Open(key, _label, envelope, plaintext);
         }
         catch (AuthenticationTagMismatchException ex)
         {
             throw new EntityFrameworkEncryptionException(
                 $"Can't decrypt value of '{label}' ({keyId}): it was modified or encrypted for another column", ex);
         }
+    }
+
+    public byte[] Decrypt(ReadOnlySpan<byte> envelope)
+    {
+        var plaintext = new byte[Envelope.GetPlaintextLength(envelope.Length)];
+        Decrypt(envelope, plaintext);
+        return plaintext;
     }
 
     private DataKeyRing GetKeyRing()

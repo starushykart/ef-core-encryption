@@ -5,6 +5,8 @@
         <IsPackable>true</IsPackable>
         <PublishRepositoryUrl>true</PublishRepositoryUrl>
         <EnablePackageValidation>true</EnablePackageValidation>
+        <!-- pack fails on breaking public API changes against this published version; bump it after each release -->
+        <PackageValidationBaselineVersion>2.0.1-beta</PackageValidationBaselineVersion>
         <Authors>starushykart</Authors>
         <Copyright>Copyright © 2024-2026 Artem Starushyk</Copyright>
         <Description>Application-side EF Core encryption</Description>

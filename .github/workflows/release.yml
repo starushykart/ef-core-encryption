@@ -28,16 +28,16 @@ jobs:
         global-json-file: global.json
 
     - name: Build
-      run: dotnet build -c Release
+      run: dotnet build -c Release /p:Version=$VERSION
 
     - name: Test
       run: dotnet test -c Release --no-build
 
     - name: Pack EntityFrameworkCore.Encrypted
-      run: dotnet pack src/EntityFrameworkCore.Encrypted -c Release --no-build --output . /p:PackageVersion=$VERSION
+      run: dotnet pack src/EntityFrameworkCore.Encrypted -c Release --no-build --output . /p:Version=$VERSION
 
     - name: Pack EntityFrameworkCore.Encrypted.AwsKms
-      run: dotnet pack src/EntityFrameworkCore.Encrypted.AwsKms -c Release --no-build --output . /p:PackageVersion=$VERSION
+      run: dotnet pack src/EntityFrameworkCore.Encrypted.AwsKms -c Release --no-build --output . /p:Version=$VERSION
 
     # trusted publishing: exchanges the OIDC token for a NuGet API key valid for 1 hour
     - name: NuGet login

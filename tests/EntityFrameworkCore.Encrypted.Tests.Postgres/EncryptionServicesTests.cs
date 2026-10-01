@@ -3,7 +3,7 @@ using System.Security.Cryptography;
 using EntityFrameworkCore.Encrypted.Annotations;
 using EntityFrameworkCore.Encrypted.Keys;
 using EntityFrameworkCore.Encrypted.Common.Exceptions;
-using FluentAssertions;
+using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;

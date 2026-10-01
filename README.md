@@ -82,6 +82,16 @@ var result = await app.Services.ReEncryptAsync<AppDbContext>();      // re-encry
 
 `ReEncryptAsync` re-encrypts values with the active root key and data key version in batches (`batchSize`, default 1000), reading and updating encrypted columns directly, without loading entities. It is safe to run while the application is running and to run again: values changed by the application in the meantime are left as is (`Skipped`), values that can't be decrypted are reported (`Invalid`). When `GetKeyUsageAsync` no longer lists a root key, no value in the database uses it. Keep it in `__EncryptionKeys` anyway if backups taken before re-encrypting may be restored.
 
-Keys are loaded when the host starts, before hosted services run. Without a generic host call `await app.Services.InitializeEncryptionAsync()`, otherwise keys are loaded on first use.
+### Health check
+
+```csharp
+builder.Services.AddHealthChecks().AddEncryptionKeys();
+```
+
+Healthy when the keys of every encrypted context are loaded; keys that aren't loaded yet are loaded by the check (key store migrated and reachable, key management service available). Once loaded, the check makes no calls.
+
+### Startup
+
+Keys are loaded when the host starts, before hosted services run. Without a generic host call `await app.Services.InitializeEncryptionAsync()`, otherwise keys are loaded on first use. With SQLite load them before the first `SaveChanges`: it locks the whole database while saving, so creating the root key during the save waits for the save to finish.
 
 

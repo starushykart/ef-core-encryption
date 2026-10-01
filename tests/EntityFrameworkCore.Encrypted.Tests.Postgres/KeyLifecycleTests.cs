@@ -6,12 +6,11 @@ using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Extensions;
 using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Fixtures;
 using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Keys;
 using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.TestContext;
-using FluentAssertions;
+using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace EntityFrameworkCore.Encrypted.Tests.Postgres;
 

@@ -77,6 +77,26 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
             [nameof(Queryable.GroupJoin)] = [2, 3]
         };
 
+        // operators the database evaluates by comparing the elements of the sequence: Select(x => x.Secret).Distinct()
+        private static readonly HashSet<string> ElementComparisons =
+        [
+            nameof(Queryable.Distinct), nameof(Queryable.Min), nameof(Queryable.Max), nameof(Queryable.Contains),
+            nameof(Queryable.Order), nameof(Queryable.OrderDescending), nameof(Queryable.Union),
+            nameof(Queryable.Intersect), nameof(Queryable.Except), nameof(Queryable.SequenceEqual)
+        ];
+
+        // operators returning their source elements unchanged
+        private static readonly HashSet<string> PassThrough =
+        [
+            nameof(Queryable.Where), nameof(Queryable.Take), nameof(Queryable.Skip), nameof(Queryable.TakeWhile),
+            nameof(Queryable.SkipWhile), nameof(Queryable.Concat), nameof(Queryable.Reverse), nameof(Queryable.AsQueryable),
+            nameof(Enumerable.AsEnumerable), nameof(EntityFrameworkQueryableExtensions.AsNoTracking),
+            nameof(EntityFrameworkQueryableExtensions.AsTracking), nameof(EntityFrameworkQueryableExtensions.TagWith)
+        ];
+
+        // lambda parameters bound to encrypted values: Select(x => x.Secret).Where(s => s == "...")
+        private readonly Dictionary<ParameterExpression, IReadOnlyProperty> _encryptedParameters = [];
+
         protected override Expression VisitBinary(BinaryExpression node)
         {
             if (node.NodeType is ExpressionType.Equal or ExpressionType.NotEqual)
@@ -107,6 +127,22 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
             // string.IsNullOrEmpty(x.Secret), list.Contains(x.Secret), EF.Functions.Like(x.Secret, ...), ...
             if (IsTranslatedByDatabase(node))
                 Reject([..node.Arguments]);
+
+            if (IsSequenceOperator(node) && FindSequence(node.Arguments[0]) is { } sequence)
+            {
+                if (ElementComparisons.Contains(node.Method.Name) && (node.Arguments.Count == 1 || StripQuote(node.Arguments[1]) is not LambdaExpression))
+                    throw Rejected(sequence.Property);
+
+                // the elements are the encrypted values themselves: lambdas over them are checked like the property
+                if (sequence.IsValue)
+                {
+                    foreach (var lambda in node.Arguments.Skip(1).Select(StripQuote).OfType<LambdaExpression>())
+                    {
+                        if (lambda.Parameters is [var parameter, ..] && parameter.Type == sequence.Property.ClrType)
+                            _encryptedParameters[parameter] = sequence.Property;
+                    }
+                }
+            }
 
             if ((node.Method.DeclaringType == typeof(Queryable) || node.Method.DeclaringType == typeof(Enumerable))
                 && KeySelectors.TryGetValue(node.Method.Name, out var indexes))
@@ -157,12 +193,42 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
             foreach (var expression in expressions)
             {
                 if (Find(expression) is { } property)
-                    throw new EntityFrameworkEncryptionException(
-                        $"{property.DeclaringType.DisplayName()}.{property.Name} is encrypted and can't be compared, searched, " +
-                        "sorted or grouped in a query: the database only sees random ciphertext, so the result would be wrong. " +
-                        "Only '== null' and '!= null' are supported; filter by other columns and check the value in memory");
+                    throw Rejected(property);
             }
         }
+
+        private static EntityFrameworkEncryptionException Rejected(IReadOnlyProperty property)
+            => new($"{property.DeclaringType.DisplayName()}.{property.Name} is encrypted and can't be compared, searched, " +
+                   "sorted or grouped in a query: the database only sees random ciphertext, so the result would be wrong. " +
+                   "Only '== null' and '!= null' are supported; filter by other columns and check the value in memory");
+
+        /// <summary>Encrypted property whose values the sequence contains, as is or within projected objects.</summary>
+        private (IReadOnlyProperty Property, bool IsValue)? FindSequence(Expression expression)
+        {
+            if (StripConvert(expression) is not MethodCallExpression call || !IsSequenceOperator(call))
+                return null;
+
+            if (call.Method.Name is nameof(Queryable.Select) && StripQuote(call.Arguments[1]) is LambdaExpression selector)
+            {
+                if (Find(selector.Body) is { } value)
+                    return (value, true);
+
+                return KeyParts(selector.Body).Select(Find).FirstOrDefault(x => x != null) is { } part ? (part, false) : null;
+            }
+
+            if (!PassThrough.Contains(call.Method.Name))
+                return null;
+
+            return call.Method.Name is nameof(Queryable.Concat)
+                ? FindSequence(call.Arguments[0]) ?? FindSequence(call.Arguments[1])
+                : FindSequence(call.Arguments[0]);
+        }
+
+        private static bool IsSequenceOperator(MethodCallExpression node)
+            => node.Arguments.Count > 0
+               && (node.Method.DeclaringType == typeof(Queryable)
+                   || node.Method.DeclaringType == typeof(Enumerable)
+                   || node.Method.DeclaringType == typeof(EntityFrameworkQueryableExtensions));
 
         private IReadOnlyProperty? Find(Expression expression)
         {
@@ -173,6 +239,7 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
                 MemberExpression { Expression: { } instance } member => Find(instance, member.Member.Name),
                 MethodCallExpression call when IsEfProperty(call) && call.Arguments[1] is ConstantExpression { Value: string name }
                     => Find(call.Arguments[0], name),
+                ParameterExpression parameter => _encryptedParameters.GetValueOrDefault(parameter),
                 _ => null
             };
         }

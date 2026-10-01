@@ -8,10 +8,9 @@ using EntityFrameworkCore.Encrypted.Tests.Postgres.Common;
 using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Extensions;
 using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Fixtures;
 using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.TestContext;
-using FluentAssertions;
+using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Xunit.Abstractions;
 using AwsKmsOptions = EntityFrameworkCore.Encrypted.AwsKms.AwsKmsOptions;
 using BaseTest = EntityFrameworkCore.Encrypted.Tests.AwsKms.Common.BaseTest;
 

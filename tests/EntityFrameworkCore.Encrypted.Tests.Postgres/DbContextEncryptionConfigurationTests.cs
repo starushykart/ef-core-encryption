@@ -2,7 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using EntityFrameworkCore.Encrypted.Annotations;
 using EntityFrameworkCore.Encrypted.Common.Exceptions;
 using EntityFrameworkCore.Encrypted.Common.Plugin;
-using FluentAssertions;
+using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions.Infrastructure;
