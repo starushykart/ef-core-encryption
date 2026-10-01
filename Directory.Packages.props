@@ -16,8 +16,8 @@
     </ItemGroup>
 
     <ItemGroup Label="AWS">
-        <PackageVersion Include="AWSSDK.Extensions.NETCore.Setup" Version="4.0.101.4" />
-        <PackageVersion Include="AWSSDK.KeyManagementService" Version="4.0.100.14" />
+        <PackageVersion Include="AWSSDK.Extensions.NETCore.Setup" Version="4.0.102.1" />
+        <PackageVersion Include="AWSSDK.KeyManagementService" Version="4.0.100.15" />
     </ItemGroup>
 
     <ItemGroup Label="Microsoft.Extensions">
