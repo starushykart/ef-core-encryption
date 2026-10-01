@@ -6,6 +6,7 @@ using EntityFrameworkCore.Encrypted.Common.Exceptions;
 using EntityFrameworkCore.Encrypted.Common.Keys;
 using EntityFrameworkCore.Encrypted.Common.Storage;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions;
@@ -67,6 +68,10 @@ internal sealed partial class EncryptionConvention(DataKeyRing? keyRing, Type co
                 "Convert other types with HasConversion, e.g. HasConversion<string>()");
 
         property.SetValueConverter(converter);
+
+        // with a converter EF compares arrays by reference: changes made inside an array wouldn't be saved
+        if (property.ClrType == typeof(byte[]) && property.GetValueComparer() == null)
+            property.SetValueComparer(new ArrayStructuralComparer<byte>());
     }
 
     // HasConversion<string>() only sets the provider type; the converter is otherwise chosen by the type mapping

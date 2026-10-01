@@ -5,118 +5,128 @@
 [![Qodana](https://github.com/starushykart/ef-core-encryption/actions/workflows/code_quality.yml/badge.svg)](https://github.com/starushykart/ef-core-encryption/actions/workflows/code_quality.yml)
 [![codecov](https://codecov.io/github/starushykart/ef-core-encryption/graph/badge.svg?token=C1JOFN38GC)](https://codecov.io/github/starushykart/ef-core-encryption)
 
-## Disclaimer
-This project is an extension of [Microsoft Entity Framework Core](https://github.com/aspnet/EntityFrameworkCore) that encrypts entity properties with AES-256-GCM, with keys managed in code or by a key management service such as AWS KMS. It works with any EF Core relational provider (tested with PostgreSQL, SQL Server and SQLite).  
-  
-The authors **do not accept any responsibility** if you use or deploy this in a production environment and lose your encryption key or corrupt your data. Users are advised to thoroughly test and validate integration before using it in any production environment.
-  
-By using or contributing to this repository, you agree to follow its terms.
+Application-side encryption of EF Core entity properties. Values are encrypted with AES-256-GCM before they reach the database and decrypted when entities are loaded: the database only stores ciphertext. Works with any EF Core relational provider (tested with PostgreSQL, SQL Server and SQLite).
 
-## NuGet
-|                                                    |      |                                                                                                                                                                                         |                                                                                                                                                                                             |
-|----------------------------------------------------|:----:|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------:|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------:|
-| EntityFrameworkCore.Encrypted                      |.NET 10| [![NuGet Version](https://img.shields.io/nuget/vpre/EntityFrameworkCore.Encrypted)](https://www.nuget.org/packages/EntityFrameworkCore.Encrypted)                                          | [![NuGet Downloads](https://img.shields.io/nuget/dt/EntityFrameworkCore.Encrypted)](https://www.nuget.org/packages/EntityFrameworkCore.Encrypted)                                           |
-| EntityFrameworkCore.Encrypted.AwsKms                |.NET 10| [![NuGet Version](https://img.shields.io/nuget/vpre/EntityFrameworkCore.Encrypted.AwsKms)](https://www.nuget.org/packages/EntityFrameworkCore.Encrypted.AwsKms)| [![NuGet Downloads](https://img.shields.io/nuget/dt/EntityFrameworkCore.Encrypted.AwsKms)](https://www.nuget.org/packages/EntityFrameworkCore.Encrypted.AwsKms) |
+| Package | |
+|---|---|
+| `EntityFrameworkCore.Encrypted` | [![NuGet](https://img.shields.io/nuget/vpre/EntityFrameworkCore.Encrypted)](https://www.nuget.org/packages/EntityFrameworkCore.Encrypted) |
+| `EntityFrameworkCore.Encrypted.AwsKms` | [![NuGet](https://img.shields.io/nuget/vpre/EntityFrameworkCore.Encrypted.AwsKms)](https://www.nuget.org/packages/EntityFrameworkCore.Encrypted.AwsKms) |
 
-## GitHub Issues
-![GitHub Issues or Pull Requests](https://img.shields.io/github/issues-raw/starushykart/ef-core-encryption?link=https%3A%2F%2Fgithub.com%2Fstarushykart%2Fef-core-encryption%2Fissues%3Fq%3Dis%253Aopen%2Bis%253Aissue%2B)
+## Features
 
-## Build from Source
+- **Transparent**: mark a property as encrypted and keep using EF Core as usual
+- **Authenticated encryption**: AES-256-GCM; tampered values and values copied to another column fail to decrypt
+- **Types**: `string`, `byte[]`, anything converted to them (enums, dates, value objects), complex types
+- **Envelope encryption** with AWS KMS: one KMS call per context on startup, keys stored next to the data
+- **Key rotation** without downtime, re-encryption of existing data, moving to another KMS key
+- **Safe queries**: comparing encrypted columns in LINQ throws instead of returning wrong results
+- **Health check** and **OpenTelemetry** metrics and traces
 
- 1. Install the latest [.NET 10 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)
- 2. Clone the source code<br/>
-    ```bash
-    git clone https://github.com/starushykart/ef-core-encryption.git
-    ```
- 3. Run `dotnet build`
-
-## Usage
+## Quick start
 
 ```csharp
 builder.Services
-    .AddEncryption(x => x.UseAwsKms("arn:aws:kms:eu-west-1:123456789012:key/..."))   // or x.UseKey(key)
+    .AddEncryption(x => x.UseAwsKms("arn:aws:kms:eu-west-1:123456789012:key/..."))   // or x.UseKey(base64Key)
     .AddDbContext<AppDbContext>(x => x.UseNpgsql(connectionString).UseEncryption());
 ```
 
 ```csharp
-public class User
+public class Customer
 {
-    public int Id { get; set; }
+    public Guid Id { get; set; }
+    public string Name { get; set; } = null!;     // plain
 
     [Encrypted]
-    public string Email { get; set; } = null!;
+    public string Email { get; set; } = null!;    // encrypted
 
     [Encrypted]
-    public byte[]? Document { get; set; }
+    public byte[]? Passport { get; set; }         // encrypted
 }
 
-// or in OnModelCreating
-modelBuilder.Entity<User>().Property(x => x.Email).IsEncrypted();
+// or fluently, also for other types after a conversion
+modelBuilder.Entity<Customer>(e =>
+{
+    e.Property(x => x.Phone).IsEncrypted();
+    e.Property(x => x.Status).HasConversion<string>().IsEncrypted();     // enum
+    e.Property(x => x.BirthDate).HasConversion<string>().IsEncrypted();  // DateOnly
+    e.ComplexProperty(x => x.Address);                                   // [Encrypted] inside works too
+});
 ```
 
-`string` and `byte[]` properties are supported, including properties of complex types. Other types are encrypted after a configured conversion to `string` or `byte[]`:
+Then add a migration: encryption adds an `__EncryptionKeys` table to the context. Strings are stored as Base64 `text`, binary values as binary. Encrypted columns can't have a maximum length, as it would limit the ciphertext.
+
+## How it works
+
+```
+KMS key ──wraps──► root key ──HKDF──► data key ──AES-256-GCM──► value
+(AWS KMS)          (__EncryptionKeys,   (in memory,              [version | key id | nonce | ciphertext | tag]
+                    stored wrapped)      never stored)            bound to "{table}.{column}"
+```
+
+- **Root key**: generated by KMS on first start and stored wrapped in the context's own database, so backups contain the keys they need. Startup unwraps it with one `kms:Decrypt`; nothing calls KMS per value.
+- **Data key**: derived from the root key in memory, versioned with `UseDataKeyVersion(n)`.
+- **Value**: has a random nonce and records which key encrypted it, so old values stay readable after rotation. The column label is authenticated, so a value moved to another column doesn't decrypt; set it explicitly (`IsEncrypted("users.email")`) to keep values readable after renaming a column.
+- **Static keys**: `UseKey(key, id)` uses a key from configuration as the root key, without KMS.
+
+## Queries
+
+The same plaintext encrypts differently every time, so the database can't compare encrypted values. Such queries throw:
 
 ```csharp
-modelBuilder.Entity<User>().Property(x => x.Status).HasConversion<string>().IsEncrypted();     // enum as text
-modelBuilder.Entity<User>().Property(x => x.Birthday).HasConversion<string>().IsEncrypted();   // DateOnly
+db.Customers.Where(x => x.Email == email);        // throws
+db.Customers.OrderBy(x => x.Email);               // throws
+db.Customers.Where(x => x.Email == null);         // ok
+db.Customers.Where(x => x.Name.StartsWith("A"));  // ok: Name isn't encrypted
 ```
 
-Values are encrypted with AES-256-GCM and bound to their column (`"{table}.{column}"`); pass a label (`IsEncrypted("users.email")`, `[Encrypted(Label = "users.email")]`) to keep values readable after renaming the column. Strings are stored as Base64 text, binary values as binary. Encrypted columns can't have a maximum length (`MaxLength`, or a size in `HasColumnType`): it would limit the ciphertext, not the value.
+Filter by other columns and check encrypted values in memory.
 
-Every encrypted context gets an `__EncryptionKeys` table: add a migration after enabling encryption.
-
-Encrypted values use a random nonce, so the database can't compare, search, sort or group them. Such queries (`Where(x => x.Email == email)`, `Contains`, `OrderBy(x => x.Email)`, ...) throw instead of returning wrong results; only `== null` and `!= null` are supported.
-
-### Keys
-
-```
-KMS key ──wraps──► root key (__EncryptionKeys table)      1 KMS Decrypt per context on startup
-root key ──HKDF──► data key v{n}                           derived in memory, never stored
-```
-
-- **Root key**: generated by KMS on first start and stored wrapped in the context's own database, so backups and replicas contain the keys they need. Only `kms:Decrypt` is needed afterwards; disable creation with `CreateRootKeyIfMissing(false)`.
-- **Data key**: derived from the root key in memory. Rotate it with `UseDataKeyVersion(n)` (default 0): no KMS calls, values encrypted with previous versions stay readable.
-- **Root key rotation**: `await app.Services.RotateRootKeyAsync<AppDbContext>()`. New values use the new root key; older values stay readable. Other instances switch to it when they read a value encrypted with it, or on restart. Instances that only write can check for it periodically with `RefreshRootKeysEvery(TimeSpan.FromMinutes(5))` (one key table read per check).
-- **KMS key rotation**: enable automatic rotation in KMS; nothing to do in the application.
-- **Moving to another KMS key**: configure the new key, then `await app.Services.RewrapRootKeysAsync<AppDbContext>()`. Root keys are re-encrypted inside KMS (`ReEncrypt`, needs `kms:ReEncryptFrom` on the old key and `kms:ReEncryptTo` on the new one); values are not touched. Disable the old key afterwards.
-
-### Retiring keys
+## Key management
 
 ```csharp
-var usage = await app.Services.GetKeyUsageAsync<AppDbContext>();     // values per table, column and key
-var result = await app.Services.ReEncryptAsync<AppDbContext>();      // re-encrypt values not using the active key
+await app.Services.RotateRootKeyAsync<AppDbContext>();   // new root key for new values
+await app.Services.GetKeyUsageAsync<AppDbContext>();     // values per column and key
+await app.Services.ReEncryptAsync<AppDbContext>();       // re-encrypt values with the active key
+await app.Services.RewrapRootKeysAsync<AppDbContext>();  // after switching to another KMS key
 ```
 
-`ReEncryptAsync` re-encrypts values with the active root key and data key version in batches (`batchSize`, default 1000), reading and updating encrypted columns directly, without loading entities. It is safe to run while the application is running and to run again: values changed by the application in the meantime are left as is (`Skipped`), values that can't be decrypted are reported (`Invalid`). When `GetKeyUsageAsync` no longer lists a root key, no value in the database uses it. Keep it in `__EncryptionKeys` anyway if backups taken before re-encrypting may be restored.
+| Task | How |
+|---|---|
+| Rotate the root key | `RotateRootKeyAsync`; other instances switch when they read a value encrypted with it, or periodically with `RefreshRootKeysEvery(TimeSpan.FromMinutes(5))` |
+| Rotate the data key | `UseDataKeyVersion(n + 1)`, no KMS calls |
+| Retire an old key | `ReEncryptAsync` (in batches, safe while the app runs), then check `GetKeyUsageAsync` |
+| Move to another KMS key | configure the new key, `RewrapRootKeysAsync` (KMS `ReEncrypt`, values untouched), then disable the old key |
+| Rotate KMS key material | enable automatic rotation in KMS, nothing to do in the app |
 
-### Health check
+IAM permissions: `kms:GenerateDataKey` (first start, rotation), `kms:Decrypt`, and `kms:ReEncryptFrom` / `kms:ReEncryptTo` for moving keys.
+
+## Health check and OpenTelemetry
 
 ```csharp
 builder.Services.AddHealthChecks().AddEncryptionKeys();
-```
 
-Healthy when the keys of every encrypted context are loaded; keys that aren't loaded yet are loaded by the check (key store migrated and reachable, key management service available). Once loaded, the check makes no calls.
-
-### OpenTelemetry
-
-```csharp
 builder.Services.AddOpenTelemetry()
     .WithTracing(x => x.AddSource(EncryptionInstrumentation.Name))
     .WithMetrics(x => x.AddMeter(EncryptionInstrumentation.Name));
 ```
 
-| Metric | Type | Tags |
-|---|---|---|
-| `efcore.encryption.values` | counter | `db.context`, `operation` (`encrypt`, `decrypt`) |
-| `efcore.encryption.decryption.failures` | counter | `db.context`, `error.type` (`tampered`, `key_not_found`, `invalid_format`) |
-| `efcore.encryption.key_wrapper.duration` | histogram (s) | `db.context`, `operation` (`generate`, `unwrap`, `rewrap`), `error.type` |
-| `efcore.encryption.root_key.loads` | counter | `db.context`, `trigger` (`active`, `on_demand`, `refresh`), `result` |
-| `efcore.encryption.reencryption.values` | counter | `db.context`, `result` (`reencrypted`, `skipped`, `invalid`) |
+Metrics: `efcore.encryption.values`, `efcore.encryption.decryption.failures` (`tampered`, `key_not_found`, `invalid_format`), `efcore.encryption.key_wrapper.duration` (KMS calls), `efcore.encryption.root_key.loads`, `efcore.encryption.reencryption.values`. Traces cover KMS calls, key loads, rotation and re-encryption. Keys are loaded before the host starts its services: to record that load too, create the providers after `Build()` with `app.Services.GetRequiredService<TracerProvider>()` (and `MeterProvider`).
 
-Traces cover key management service calls, root key loads, rotation, rewrapping, key usage and re-encryption; values are counted, not traced.
+## Notes
 
-### Startup
+- Keys are loaded when the host starts. Without a generic host, call `await app.Services.InitializeEncryptionAsync()`; with SQLite, do it before the first `SaveChanges`.
+- Contexts created outside of dependency injection (e.g. design-time factories) build the model, so migrations work, but can't encrypt values.
+- Losing the KMS key or the `__EncryptionKeys` table makes the data unreadable. The authors don't accept responsibility for lost keys or data: test backups, restores and key rotation before using it in production.
 
-Keys are loaded when the host starts, before hosted services run. Without a generic host call `await app.Services.InitializeEncryptionAsync()`, otherwise keys are loaded on first use. With SQLite load them before the first `SaveChanges`: it locks the whole database while saving, so creating the root key during the save waits for the save to finish.
+## Samples
 
+- [Static key](samples/EntityFrameworkCore.Samples.Encryption.Aes): encrypted strings, binary, enum, date and complex type properties, queries, health check
+- [AWS KMS](samples/EntityFrameworkCore.Samples.Encryption.AwsKms): key rotation, refresh, key usage, re-encryption, rewrap, OpenTelemetry
 
+Run `docker compose up -d` for PostgreSQL and LocalStack, then `dotnet run` in a sample.
+
+## Build from source
+
+Install the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0), then run `dotnet build` and `dotnet test`; the tests need Docker (Testcontainers).
+
+Report security issues as described in [SECURITY.md](SECURITY.md). Licensed under [MIT](LICENSE).

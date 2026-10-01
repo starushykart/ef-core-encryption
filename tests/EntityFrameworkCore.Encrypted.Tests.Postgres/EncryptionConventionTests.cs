@@ -4,6 +4,7 @@ using EntityFrameworkCore.Encrypted.Annotations;
 using EntityFrameworkCore.Encrypted.Common.Exceptions;
 using EntityFrameworkCore.Encrypted.Common.Plugin;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Microsoft.Extensions.DependencyInjection;
@@ -84,6 +85,18 @@ public class EncryptionConventionTests
         var act = () => context.Set<Customer>().Where(x => x.Address.Street == "Main st").ToQueryString();
 
         act.Should().Throw<EntityFrameworkEncryptionException>().WithMessage("Address.Street is encrypted*");
+    }
+
+    [Fact]
+    public void Should_compare_encrypted_binary_values_by_content()
+    {
+        var passport = Model<CustomerContext>().FindEntityType(typeof(Customer))!.FindProperty(nameof(Customer.Passport))!;
+
+        var comparer = passport.GetValueComparer();
+
+        comparer.Should().BeOfType<ArrayStructuralComparer<byte>>();
+        comparer.Equals(new byte[] { 1, 2 }, new byte[] { 1, 2 }).Should().BeTrue();
+        ((byte[])comparer.Snapshot(new byte[] { 1 })!).Should().Equal(1);
     }
 
     [Fact]
@@ -215,6 +228,9 @@ public class EncryptionConventionTests
         public DateOnly Birthday { get; set; }
         public string Code { get; set; } = "";
         public int Number { get; set; }
+
+        [Encrypted]
+        public byte[]? Passport { get; set; }
     }
 
     public class Address
