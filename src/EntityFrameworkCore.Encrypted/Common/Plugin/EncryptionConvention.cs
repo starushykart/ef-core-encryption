@@ -127,7 +127,12 @@ internal sealed partial class EncryptionConvention(DataKeyRing? keyRing, Type co
         var converter = (ValueConverter)Activator.CreateInstance(
             typeof(BlindIndexConverter<>).MakeGenericType(modelType), indexer, conversion, property.Name)!;
 
-        var index = entityType.Builder.Property(property.ClrType, indexName, fromDataAnnotation: true)!;
+        // always nullable: rows that existed before the blind index was added have none until it's rebuilt
+        var indexType = property.ClrType.IsValueType && Nullable.GetUnderlyingType(property.ClrType) == null
+            ? typeof(Nullable<>).MakeGenericType(property.ClrType)
+            : property.ClrType;
+
+        var index = entityType.Builder.Property(indexType, indexName, fromDataAnnotation: true)!;
         index.IsRequired(false, fromDataAnnotation: true);
         index.HasConversion(converter, fromDataAnnotation: true);
         index.HasMaxLength(BlindIndexer.Size, fromDataAnnotation: true);

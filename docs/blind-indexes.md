@@ -120,6 +120,6 @@ So use it for columns with many distinct values that you need to look up: emails
 ## Limitations
 
 - Equality only: no prefix search, ranges or sorting.
-- Properties of entity types only, not of complex types yet.
+- Properties of entity types, including owned types, but not of complex types yet.
 - Normalization works on values stored as strings, not on binary values.
 - Raw SQL that writes encrypted columns doesn't update the index (it can't write valid encrypted values either).
