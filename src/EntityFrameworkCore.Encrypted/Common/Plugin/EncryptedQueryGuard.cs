@@ -128,21 +128,8 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
             if (IsTranslatedByDatabase(node))
                 Reject([..node.Arguments]);
 
-            if (IsSequenceOperator(node) && FindSequence(node.Arguments[0]) is { } sequence)
-            {
-                if (ElementComparisons.Contains(node.Method.Name) && (node.Arguments.Count == 1 || StripQuote(node.Arguments[1]) is not LambdaExpression))
-                    throw Rejected(sequence.Property);
-
-                // the elements are the encrypted values themselves: lambdas over them are checked like the property
-                if (sequence.IsValue)
-                {
-                    foreach (var lambda in node.Arguments.Skip(1).Select(StripQuote).OfType<LambdaExpression>())
-                    {
-                        if (lambda.Parameters is [var parameter, ..] && parameter.Type == sequence.Property.ClrType)
-                            _encryptedParameters[parameter] = sequence.Property;
-                    }
-                }
-            }
+            if (IsSequenceOperator(node))
+                CheckSequenceOperator(node);
 
             if ((node.Method.DeclaringType == typeof(Queryable) || node.Method.DeclaringType == typeof(Enumerable))
                 && KeySelectors.TryGetValue(node.Method.Name, out var indexes))
@@ -202,6 +189,52 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
                    "sorted or grouped in a query: the database only sees random ciphertext, so the result would be wrong. " +
                    "Only '== null' and '!= null' are supported; filter by other columns and check the value in memory");
 
+        private void CheckSequenceOperator(MethodCallExpression node)
+        {
+            // every sequence operand: plain.Union(q.Select(x => x.Secret)), outer.Join(q.Select(x => x.Secret), ...)
+            var sequences = node.Arguments.Select(FindSequence).ToArray();
+
+            // Contains(source, item): only the source is a sequence of elements being compared
+            var compared = node.Method.Name is nameof(Queryable.Contains) ? sequences.Take(1) : sequences;
+
+            if (ElementComparisons.Contains(node.Method.Name)
+                && node.Arguments.Skip(1).All(x => StripQuote(x) is not LambdaExpression)
+                && compared.FirstOrDefault(x => x != null) is { } sequence)
+            {
+                throw Rejected(sequence.Property);
+            }
+
+            // the elements are the encrypted values themselves: lambdas over them are checked like the property
+            if (node.Method.Name is nameof(Queryable.Join) or nameof(Queryable.GroupJoin) && node.Arguments.Count >= 5)
+            {
+                Bind(node.Arguments[2], 0, sequences[0]);
+                Bind(node.Arguments[3], 0, sequences[1]);
+                Bind(node.Arguments[4], 0, sequences[0]);
+                Bind(node.Arguments[4], 1, sequences[1]);
+            }
+            else if (node.Method.Name is nameof(Queryable.Zip) && node.Arguments.Count >= 3)
+            {
+                Bind(node.Arguments[2], 0, sequences[0]);
+                Bind(node.Arguments[2], 1, sequences[1]);
+            }
+            else
+            {
+                foreach (var lambda in node.Arguments.Skip(1))
+                    Bind(lambda, 0, sequences[0]);
+            }
+        }
+
+        private void Bind(Expression argument, int parameterIndex, (IReadOnlyProperty Property, bool IsValue)? sequence)
+        {
+            if (sequence is { IsValue: true } value
+                && StripQuote(argument) is LambdaExpression lambda
+                && parameterIndex < lambda.Parameters.Count
+                && lambda.Parameters[parameterIndex].Type == value.Property.ClrType)
+            {
+                _encryptedParameters[lambda.Parameters[parameterIndex]] = value.Property;
+            }
+        }
+
         /// <summary>Encrypted property whose values the sequence contains, as is or within projected objects.</summary>
         private (IReadOnlyProperty Property, bool IsValue)? FindSequence(Expression expression)
         {
@@ -210,6 +243,9 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
 
             if (call.Method.Name is nameof(Queryable.Select) && StripQuote(call.Arguments[1]) is LambdaExpression selector)
             {
+                // nested projections: q.Select(x => x.Secret).Select(s => s)
+                Bind(selector, 0, FindSequence(call.Arguments[0]));
+
                 if (Find(selector.Body) is { } value)
                     return (value, true);
 

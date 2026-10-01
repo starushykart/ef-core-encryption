@@ -55,7 +55,14 @@ public class EncryptedQueryGuardTests : IDisposable
             { "filter projection", q => q.Select(x => x.Text).Where(x => x == value) },
             { "filter projection after take", q => q.Select(x => x.Text).Take(10).Where(x => x!.StartsWith(value)) },
             { "group projection", q => q.Select(x => x.Blob).GroupBy(x => x).Select(x => x.Key) },
-            { "projection contains", q => q.Where(_ => q.Select(y => y.Text).Contains(value)) }
+            { "projection contains", q => q.Where(_ => q.Select(y => y.Text).Contains(value)) },
+            { "union with encrypted second operand", q => q.Select(x => x.Id.ToString()).Union(q.Select(x => x.Text)) },
+            { "except with encrypted second operand", q => q.Select(x => x.Id.ToString()).Except(q.Select(x => x.Text!)) },
+            { "join on encrypted inner sequence", q => q.Join(q.Select(x => x.Text), x => x.Id.ToString(), s => s, (x, s) => x.Id) },
+            { "join on encrypted outer key", q => q.Select(x => x.Text).Join(q, s => s, x => x.Id.ToString(), (s, x) => x.Id) },
+            { "nested projection distinct", q => q.Select(x => x.Text).Select(s => s).Distinct() },
+            { "nested projection filter", q => q.Select(x => x.Text).Select(s => s).Where(s => s == value) },
+            { "nested anonymous projection distinct", q => q.Select(x => x.Text).Select(s => new { s }).Distinct() }
         };
     }
 
@@ -96,7 +103,10 @@ public class EncryptedQueryGuardTests : IDisposable
             { "filter projection by null", q => q.Select(x => x.Text).Where(x => x != null) },
             { "distinct other column", q => q.Select(x => x.Id).Distinct() },
             { "take projection", q => q.OrderBy(x => x.Id).Select(x => x.Text).Take(5) },
-            { "anonymous projection filtered by other column", q => q.Select(x => new { x.Id, x.Text }).Where(x => x.Id > 1) }
+            { "anonymous projection filtered by other column", q => q.Select(x => new { x.Id, x.Text }).Where(x => x.Id > 1) },
+            { "union of other columns", q => q.Select(x => x.Id).Union(q.Select(x => x.Id)) },
+            { "join projecting encrypted inner value", q => q.Join(q, x => x.Id, y => y.Id, (x, y) => y.Text) },
+            { "nested projection", q => q.Select(x => x.Text).Select(s => s) }
         };
 
     [Theory]
