@@ -5,6 +5,16 @@
 [![Qodana](https://github.com/starushykart/ef-core-encryption/actions/workflows/code_quality.yml/badge.svg)](https://github.com/starushykart/ef-core-encryption/actions/workflows/code_quality.yml)
 [![codecov](https://codecov.io/github/starushykart/ef-core-encryption/graph/badge.svg?token=C1JOFN38GC)](https://codecov.io/github/starushykart/ef-core-encryption)
 
+- [Features](#features)
+- [Quick start](#quick-start)
+- [How it works](#how-it-works)
+- [Queries](#queries)
+- [Key management](#key-management)
+- [Health check and OpenTelemetry](#health-check-and-opentelemetry)
+- [Notes](#notes)
+- [Samples](#samples)
+- [Build from source](#build-from-source)
+
 Application-side encryption of EF Core entity properties. Values are encrypted with AES-256-GCM before they reach the database and decrypted when entities are loaded: the database only stores ciphertext. Works with any EF Core relational provider (tested with PostgreSQL, SQL Server and SQLite).
 
 | Package | |
