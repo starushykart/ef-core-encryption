@@ -26,6 +26,10 @@ Encrypt sensitive columns in your EF Core application. You mark a property with 
 - **It's ready for production.** A health check and OpenTelemetry metrics and traces are built in.
 - **It works with any relational database.** It's tested with PostgreSQL, SQL Server and SQLite.
 
+## Looking up rows by encrypted values
+
+Encrypted values can't be compared in the database, because the same value encrypts differently every time. If you need to find rows by one, for example a customer by email, add a blind index to the property. The library then stores a keyed hash of the value in an extra indexed column, keeps it up to date on every save, and turns `Where(x => x.Email == email)` into a lookup on that column. You can normalize values first, so lookups ignore case or spaces, and key rotation never breaks them. It only answers equality questions and shows which rows share a value, so it's meant for columns with many distinct values like emails or document numbers. [More about blind indexes](https://starushykart.github.io/ef-core-encryption/blind-indexes).
+
 ## Documentation
 
 - [Getting started](https://starushykart.github.io/ef-core-encryption/getting-started): install, configure and add a migration in a few minutes

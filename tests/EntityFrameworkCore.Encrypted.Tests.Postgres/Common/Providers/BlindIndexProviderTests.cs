@@ -50,6 +50,7 @@ public abstract class BlindIndexProviderTests(ITestOutputHelper helper) : IAsync
         (await db.People.Where(x => x.Status == PersonStatus.Blocked).Select(x => x.Name).ToListAsync()).Should().Equal("john");
         (await db.People.Where(x => x.Ssn != ssn).Select(x => x.Name).ToListAsync()).Should().BeEquivalentTo("john", "max");
         (await db.People.CountAsync(x => x.Ssn == "111-22-3333 ")).Should().Be(0, "only the email is normalized");
+        (await db.People.SingleAsync(x => x.Contact!.Phone == "+1 555 0100")).Name.Should().Be("jane");
     }
 
     [Fact]
@@ -290,7 +291,7 @@ public abstract class BlindIndexProviderTests(ITestOutputHelper helper) : IAsync
     {
         List<Person> people =
         [
-            new() { Id = Guid.NewGuid(), Name = "jane", Email = "jane@example.com", Ssn = "111-22-3333", Status = PersonStatus.Pending, Document = [1, 2, 3] },
+            new() { Id = Guid.NewGuid(), Name = "jane", Email = "jane@example.com", Ssn = "111-22-3333", Status = PersonStatus.Pending, Document = [1, 2, 3], Contact = new() { Phone = "+1 555 0100" } },
             new() { Id = Guid.NewGuid(), Name = "john", Email = "john@example.com", Ssn = "222-33-4444", Status = PersonStatus.Blocked },
             new() { Id = Guid.NewGuid(), Name = "max", Email = "max@example.com", Ssn = "333-44-5555", Status = PersonStatus.Active }
         ];
@@ -325,6 +326,7 @@ public sealed class BlindIndexDbContext(DbContextOptions<BlindIndexDbContext> op
         {
             e.Property(x => x.Email).IsEncrypted().HasBlindIndex(v => v.Trim().ToLowerInvariant());
             e.Property(x => x.Status).HasConversion<string>().IsEncrypted().HasBlindIndex();
+            e.OwnsOne(x => x.Contact);
         });
 }
 
@@ -344,6 +346,15 @@ public sealed record Person
 
     [Encrypted, BlindIndex]
     public byte[]? Document { get; set; }
+
+    /// <summary>Owned entity type with a blind index, stored in the same table.</summary>
+    public Contact? Contact { get; set; }
+}
+
+public sealed record Contact
+{
+    [Encrypted, BlindIndex]
+    public string? Phone { get; set; }
 }
 
 public enum PersonStatus { Pending, Active, Blocked }

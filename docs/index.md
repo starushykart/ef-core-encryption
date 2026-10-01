@@ -59,6 +59,7 @@ Both target .NET 10 and EF Core 10.
 
 - New here? Start with [Getting started](getting-started).
 - Deciding how to manage keys? Read [Key sources](key-sources).
+- Need to find rows by an encrypted value? See [Blind indexes](blind-indexes).
 - Curious how it's built or what it protects against? See [How it works](how-it-works).
 - Want to try it first? Run one of the [samples](samples).
 

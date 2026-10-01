@@ -41,6 +41,7 @@ public sealed class BlindIndexModelTests : IDisposable
         index.GetColumnType().Should().Be("bytea");
         account.GetIndexes().Should().Contain(x => x.Properties.Single() == index);
         account.FindProperty("Login_Index").Should().BeNull("Login has no blind index");
+        account.FindProperty("Level_Index")!.IsNullable.Should().BeTrue("also for properties of non-nullable value types");
     }
 
     [Fact]
@@ -146,7 +147,11 @@ public sealed class BlindIndexModelTests : IDisposable
         public DbSet<Account> Accounts => Set<Account>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
-            => modelBuilder.Entity<Account>().Property(x => x.Email).IsEncrypted().HasBlindIndex(x => x.Trim().ToLowerInvariant());
+            => modelBuilder.Entity<Account>(e =>
+            {
+                e.Property(x => x.Email).IsEncrypted().HasBlindIndex(x => x.Trim().ToLowerInvariant());
+                e.Property(x => x.Level).HasConversion<string>().IsEncrypted().HasBlindIndex();
+            });
     }
 
     public sealed class NotEncryptedContext(DbContextOptions<NotEncryptedContext> options) : DbContext(options)
@@ -177,7 +182,11 @@ public sealed class BlindIndexModelTests : IDisposable
         public string? Phone { get; set; }
 
         public byte[]? Photo { get; set; }
+
+        public Level Level { get; set; }
     }
+
+    public enum Level { Basic, Premium }
 
     public sealed class Holder
     {
