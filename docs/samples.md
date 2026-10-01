@@ -51,11 +51,10 @@ curl -X POST http://localhost:5152/customers \
   -d '{"name":"Jane Doe","email":"jane@example.com","phone":"+1 555 0100","birthDate":"1990-04-01","street":"1 Main St","city":"Springfield","passportScanBase64":"AQID"}'
 ```
 
-Now look at the table. You'll see the name and the city as you entered them, while everything else is unreadable:
+Now look at what's stored. The name and the city are as you entered them, everything else is ciphertext, and `emailIndex` is the keyed hash of the email:
 
 ```bash
-docker exec -it encryption-samples-postgres psql -U debug -d encryption-sample-aes \
-  -c 'select "Name", "Email", "Address_City", "Address_Street" from "Customers"'
+curl http://localhost:5152/customers/stored
 ```
 
 Reading through the API gives you the decrypted values back:
@@ -76,7 +75,26 @@ The phone doesn't have one, so the same kind of query is refused with a 400 and 
 curl "http://localhost:5152/customers/by-phone?phone=%2B1%20555%200100"
 ```
 
-If you look at the table again, you'll see the `Email_Index` column holding a hash rather than the email.
+Updates are encrypted the same way. A tracked update through `SaveChanges`, where the blind index follows the new email:
+
+```bash
+curl -X PUT http://localhost:5152/customers/{id} \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Jane Doe","email":"jane.doe@example.com","phone":"+1 555 0199","street":"9 Elm St","city":"Springfield"}'
+
+curl "http://localhost:5152/customers/by-email?email=jane.doe@example.com"   # found
+curl "http://localhost:5152/customers/by-email?email=jane@example.com"       # 404
+```
+
+Bulk updates with `ExecuteUpdate` encrypt the new value without loading the entity, and set the blind index in the same statement:
+
+```bash
+curl -X PATCH "http://localhost:5152/customers/{id}/email?email=jdoe@example.com"
+curl -X POST http://localhost:5152/customers/{id}/block    # sets the encrypted status
+curl -X DELETE http://localhost:5152/customers/{id}
+```
+
+Look at `/customers/stored` after each step: every changed value gets a new ciphertext.
 
 The health check is at `http://localhost:5152/health`, and in development the OpenAPI document is at `/openapi/v1.json`.
 
