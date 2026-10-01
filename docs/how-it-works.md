@@ -25,7 +25,7 @@ KMS key ──wraps──► root key ──HKDF──► data key ──AES-256
 - **The root key** is what everything else derives from. With KMS there's one per context, and it's stored wrapped in that context's `__EncryptionKeys` table. In plaintext it only ever exists in your app's memory.
 - **The data key** is derived from the root key with HKDF-SHA256 (with `efenc:dek:v{version}` as the info). It's never stored anywhere, which is why rotating it costs nothing.
 
-[Blind indexes](blind-indexes) use a separate **index key** per context. It's stored in `__EncryptionKeys` with the reserved id `0`, wrapped by your key management service or by the active static key. Each column's HMAC key is derived from it with HKDF (`efenc:bidx:{label}`). Because it's independent of the root keys, rotating them doesn't change any index.
+[Blind indexes](blind-indexes) use a separate **index key** per context. It's stored in `__EncryptionKeys` with the reserved id `0`, wrapped by your key management service, or with a key derived from the active static key (HKDF, `efenc:wrap:index-key`). Each column's HMAC key is derived from it with HKDF (`efenc:bidx:{label}`). Because it's independent of the root keys, rotating them doesn't change any index.
 
 ## What happens at runtime
 

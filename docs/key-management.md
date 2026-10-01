@@ -90,7 +90,7 @@ Values aren't encrypted with the root key directly. They're encrypted with a dat
 builder.Services.AddEncryption(x => x.UseAwsKms(keyId).UseDataKeyVersion(1));   // the default is 0
 ```
 
-Roll it out to all instances, and values written with older versions keep working.
+Roll it out to all instances, and values written with older versions keep working. A rolling deployment is safe too: instances still on the old version can already read values written with the new one, because data keys are derived, not stored. Any version works, including date-based ones like `20261001`.
 
 ## Key usage
 
