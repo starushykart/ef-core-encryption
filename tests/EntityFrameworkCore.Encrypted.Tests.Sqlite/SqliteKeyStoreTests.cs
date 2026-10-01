@@ -5,6 +5,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Xunit;
 
 namespace EntityFrameworkCore.Encrypted.Tests.Sqlite;
@@ -40,6 +41,36 @@ public sealed class SqliteKeyStoreTests : IAsyncDisposable
 
         (await context.Customers.SingleAsync(x => x.Email == "jane@example.com")).Should().NotBeNull();
         (await context.AuditEntries.Select(x => x.Payload).ToListAsync()).Should().Equal("added AuditedCustomer");
+    }
+
+    [Fact]
+    public async Task Should_load_keys_after_hosted_services_registered_before_encryption()
+    {
+        var wrapper = new InMemoryKeyWrapper();
+        var builder = Host.CreateApplicationBuilder();
+
+        // e.g. migrations: the key table exists when the keys are loaded
+        builder.Services.AddHostedService<CreateDatabase>();
+        builder.Services
+            .AddEncryption(x => x.UseKeyWrapper(_ => wrapper))
+            .AddDbContext<AuditedDbContext>(x => x.UseSqlite($"Data Source={_path}").UseEncryption());
+
+        using var host = builder.Build();
+        await host.StartAsync().WaitAsync(TimeSpan.FromSeconds(30));
+
+        wrapper.GenerateCalls.Should().Be(2, "the root key and the blind index key are created on startup");
+        await host.StopAsync();
+    }
+
+    private sealed class CreateDatabase(IServiceScopeFactory scopeFactory) : IHostedService
+    {
+        public async Task StartAsync(CancellationToken cancellationToken)
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            await scope.ServiceProvider.GetRequiredService<AuditedDbContext>().Database.EnsureCreatedAsync(cancellationToken);
+        }
+
+        public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     public ValueTask DisposeAsync()

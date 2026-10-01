@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
+// registered before AddEncryption: the database is migrated before the keys are loaded
 builder.Services.AddHostedService<MigrationHostedService>();
 builder.Services.AddHostedService<LegacyContractsSeeder>();
 

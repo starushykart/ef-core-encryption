@@ -116,7 +116,15 @@ The one thing you can't do is filter or sort by an encrypted column in the datab
 
 ## A note on startup
 
-The library loads keys once, when the host starts, so your first request doesn't have to wait for them. If the database isn't migrated yet at that point (say, because migrations run a bit later during startup), it simply loads them on first use.
+The library loads keys once, when the host starts, so your first request doesn't have to wait for them. It does that in a hosted service registered by `AddEncryption`, and hosted services start in the order they're registered. If you migrate the database in a hosted service, register it before `AddEncryption`, so the key table exists when the keys are loaded:
+
+```csharp
+builder.Services.AddHostedService<MigrationHostedService>();   // runs first
+builder.Services.AddEncryption(x => x.UseKey(key));            // then the keys are loaded
+builder.Services.AddHostedService<Worker>();                   // finds them loaded
+```
+
+If the database isn't migrated yet when the keys are loaded, the library logs a warning and loads them on first use.
 
 Console apps and tests often don't use a generic host. In that case, load the keys yourself:
 

@@ -93,7 +93,7 @@ SQLite locks the whole database while it saves. If the root key doesn't exist ye
 
 ## Startup fails with "Can't read __EncryptionKeys ... Make sure the database is migrated"
 
-The key table doesn't exist yet. Add a migration after enabling encryption. If migrations run during startup, the library notices the missing table and loads keys on first use instead, so you'll only see this error at runtime when the database really isn't migrated.
+The key table doesn't exist yet. Add a migration after enabling encryption. If migrations run in a hosted service, register it before `AddEncryption`, so it runs before the keys are loaded. Otherwise the library notices the missing table, logs a warning and loads keys on first use, so you'll only see this error at runtime when the database really isn't migrated.
 
 ## "... is part of a key or foreign key and can't be encrypted"
 

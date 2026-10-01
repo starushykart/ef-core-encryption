@@ -11,6 +11,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
 
+// registered before AddEncryption: the database is migrated before the keys are loaded
 builder.Services.AddHostedService<MigrationHostedService>();
 
 // LocalStack (docker compose); without this registration the client comes from the AWS configuration
