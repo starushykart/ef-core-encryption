@@ -1,6 +1,6 @@
 ---
 title: How it works
-nav_order: 8
+nav_order: 9
 ---
 
 # How it works
@@ -24,6 +24,8 @@ KMS key ──wraps──► root key ──HKDF──► data key ──AES-256
 - **The wrapping key** lives in your key management service, for example a KMS key, and never leaves it. With a static key there's no wrapping key, because your configured key is the root key.
 - **The root key** is what everything else derives from. With KMS there's one per context, and it's stored wrapped in that context's `__EncryptionKeys` table. In plaintext it only ever exists in your app's memory.
 - **The data key** is derived from the root key with HKDF-SHA256 (with `efenc:dek:v{version}` as the info). It's never stored anywhere, which is why rotating it costs nothing.
+
+[Blind indexes](blind-indexes) use a separate **index key** per context. It's stored in `__EncryptionKeys` with the reserved id `0`, wrapped by your key management service or by the active static key. Each column's HMAC key is derived from it with HKDF (`efenc:bidx:{label}`). Because it's independent of the root keys, rotating them doesn't change any index.
 
 ## What happens at runtime
 
@@ -62,6 +64,7 @@ It doesn't protect you from:
 
 - **someone who controls your application.** It has the keys and decrypts values as part of its job.
 - **values swapped between rows of the same column.** The label ties a value to its column, not to its row.
+- **equality patterns in blind-indexed columns.** A [blind index](blind-indexes#what-it-reveals) shows which rows share a value.
 - **metadata.** Which values are `NULL`, how long they are (the ciphertext length gives away the plaintext length), how many rows there are, and everything in columns you didn't encrypt.
 - **a leaked static key.** If that's a concern, use a key management service, which keeps the root key out of your configuration entirely.
 

@@ -41,7 +41,7 @@ At its core the library encrypts `string` and `byte[]`. Anything that EF Core ca
 | your own value objects | Base64 text or binary | `HasConversion(...).IsEncrypted()` |
 | properties of complex types | as above | `[Encrypted]` inside the complex type |
 
-Your conversion always runs first, and its result is what gets encrypted.
+Your conversion always runs first, and its result is what gets encrypted. Any of these can also get a [blind index](blind-indexes), so you can look rows up by them.
 
 ### Enums, dates and numbers
 

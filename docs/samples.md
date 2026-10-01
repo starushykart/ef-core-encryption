@@ -1,6 +1,6 @@
 ---
 title: Samples
-nav_order: 9
+nav_order: 10
 ---
 
 # Samples
@@ -64,15 +64,19 @@ Reading through the API gives you the decrypted values back:
 curl http://localhost:5152/customers?name=Jane
 ```
 
-There are two endpoints for looking up a customer by email, to show the difference:
+The email has a [blind index](blind-indexes), so you can look customers up by it. Case and surrounding spaces don't matter:
 
 ```bash
-# narrows down by name in the database, then compares emails in memory
-curl "http://localhost:5152/customers/by-email?email=jane@example.com&name=Jane"
-
-# tries to compare the encrypted column in SQL, which the library refuses to run (400 with the explanation)
-curl "http://localhost:5152/customers/by-email/unsupported?email=jane@example.com"
+curl "http://localhost:5152/customers/by-email?email=%20JANE@example.com"
 ```
+
+The phone doesn't have one, so the same kind of query is refused with a 400 and an explanation:
+
+```bash
+curl "http://localhost:5152/customers/by-phone?phone=%2B1%20555%200100"
+```
+
+If you look at the table again, you'll see the `Email_Index` column holding a hash rather than the email.
 
 The health check is at `http://localhost:5152/health`, and in development the OpenAPI document is at `/openapi/v1.json`.
 

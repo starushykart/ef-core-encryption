@@ -27,6 +27,7 @@ internal sealed class EncryptionDbContextOptionsExtension(DataKeyRing? keyRing) 
             .TryAdd<IConventionSetPlugin, EncryptionConventionPlugin>();
 
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IInterceptor, EncryptedQueryGuard>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IInterceptor, BlindIndexSaveChangesInterceptor>());
 
         DecorateModelCacheKeyFactory(services);
     }

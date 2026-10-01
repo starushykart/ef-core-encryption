@@ -11,6 +11,9 @@ public sealed class EncryptedDbContext(DbContextOptions<EncryptedDbContext> opti
         => modelBuilder.Entity<Customer>(e =>
         {
             e.Property(x => x.Phone).IsEncrypted();
+
+            // searchable by equality, regardless of case and surrounding spaces
+            e.Property(x => x.Email).HasBlindIndex(v => v.Trim().ToLowerInvariant());
             e.Property(x => x.Status).HasConversion<string>().IsEncrypted();
             e.Property(x => x.BirthDate).HasConversion<string>().IsEncrypted();
             e.ComplexProperty(x => x.Address);

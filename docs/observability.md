@@ -1,6 +1,6 @@
 ---
 title: Health check and OpenTelemetry
-nav_order: 7
+nav_order: 8
 ---
 
 # Health check and OpenTelemetry
@@ -68,6 +68,8 @@ Traces cover key management and maintenance work. Individual values aren't trace
 | `efcore.encryption.root_key.rewrap` | you call `RewrapRootKeysAsync` |
 | `efcore.encryption.key_usage` | you call `GetKeyUsageAsync` |
 | `efcore.encryption.reencrypt` | you call `ReEncryptAsync` |
+| `efcore.encryption.index_key.load` | the blind index key is loaded |
+| `efcore.encryption.blind_index.rebuild` | you call `RebuildBlindIndexesAsync` |
 
 Every activity carries a `db.context` tag with the name of the context type.
 

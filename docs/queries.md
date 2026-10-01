@@ -15,7 +15,9 @@ nav_order: 6
 
 Each value is encrypted with a fresh random nonce, so encrypting the same email twice gives you two completely different ciphertexts. That's good for security, because nobody can tell that two rows hold the same value. But it also means the database can't compare encrypted values. A `WHERE Email = @email` would compare your parameter to random bytes and quietly return nothing.
 
-To save you from bugs like that, the library checks your LINQ queries. If a query would compare, search, sort or group by an encrypted column in the database, it throws an `EntityFrameworkEncryptionException` before anything is sent:
+If you need to look up rows by an encrypted value, add a [blind index](blind-indexes) to the column. Then `Where(x => x.Email == email)` just works.
+
+For everything else, the library checks your LINQ queries. If a query would compare, search, sort or group by an encrypted column in the database, it throws an `EntityFrameworkEncryptionException` before anything is sent:
 
 ```
 Customer.Email is encrypted and can't be compared, searched, sorted or grouped in a query: the database only sees
@@ -64,7 +66,15 @@ Raw SQL (`FromSql`, `ExecuteSql`) isn't checked, so be careful there.
 
 ## Finding a row by an encrypted value
 
-The simplest approach is to narrow things down with columns that aren't encrypted, and then compare the decrypted values in memory:
+The best way is a [blind index](blind-indexes):
+
+```csharp
+e.Property(x => x.Email).IsEncrypted().HasBlindIndex(v => v.Trim().ToLowerInvariant());
+
+var customer = await db.Customers.SingleOrDefaultAsync(x => x.Email == email);
+```
+
+Without one, narrow things down with columns that aren't encrypted, and then compare the decrypted values in memory:
 
 ```csharp
 var candidates = db.Customers.AsNoTracking().Where(x => x.Name.StartsWith(name));
@@ -78,25 +88,6 @@ await foreach (var customer in candidates.AsAsyncEnumerable())
 
 That works well as long as the other filters keep the number of candidates small.
 
-If you need fast lookups by an encrypted value in a big table, store a keyed hash (an HMAC) of the value in a separate indexed column and query by that:
-
-```csharp
-public class Customer
-{
-    [Encrypted]
-    public string Email { get; set; } = null!;
-
-    // HMAC-SHA256 of the normalized email: equal emails give equal hashes, but you can't get the email back
-    public byte[] EmailHash { get; set; } = null!;
-}
-
-var hash = HMACSHA256.HashData(hashKey, Encoding.UTF8.GetBytes(email.Trim().ToLowerInvariant()));
-var customer = await db.Customers.SingleOrDefaultAsync(x => x.EmailHash == hash);
-```
-
-{: .note }
-A hash column does reveal which rows share the same value. Use a separate secret key for it (not your encryption key), and only add hash columns for values you really need to look up.
-
 ## Bulk updates
 
 `ExecuteUpdate` encrypts the new values, just like `SaveChanges` does:
@@ -107,4 +98,4 @@ await db.Customers
     .ExecuteUpdateAsync(s => s.SetProperty(x => x.Email, "new@example.com"));
 ```
 
-The usual rule still applies to the filter: `ExecuteUpdate` and `ExecuteDelete` can't filter by an encrypted column.
+The usual rule still applies to the filter: `ExecuteUpdate` and `ExecuteDelete` can't filter by an encrypted column, unless it has a [blind index](blind-indexes).

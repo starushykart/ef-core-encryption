@@ -34,6 +34,7 @@ Add a migration after enabling encryption: every encrypted context gets an `__En
 - Tamper detection, values bound to their column
 - Key rotation without re-encrypting data; `ReEncryptAsync` and `GetKeyUsageAsync` to retire old keys
 - Envelope encryption with a key management service: [EntityFrameworkCore.Encrypted.AwsKms](https://www.nuget.org/packages/EntityFrameworkCore.Encrypted.AwsKms)
+- Blind indexes: `[BlindIndex]` or `HasBlindIndex(v => v.Trim().ToLowerInvariant())` makes `Where(x => x.Email == email)` work
 - Queries that compare, search or sort encrypted columns throw instead of returning wrong results
 
 Documentation: https://starushykart.github.io/ef-core-encryption

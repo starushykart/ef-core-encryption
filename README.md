@@ -21,6 +21,7 @@ Encrypt sensitive columns in your EF Core application. You mark a property with 
 - **More than strings.** It handles `byte[]`, enums, dates, value objects and properties of complex types.
 - **You choose where keys come from.** Use a static key from your configuration, AWS KMS, or plug in your own key management service.
 - **Keys can be rotated without downtime.** Old values stay readable, and you can re-encrypt them in the background.
+- **You can still look rows up by encrypted values.** Add a blind index and `Where(x => x.Email == email)` works, using a database index.
 - **Query mistakes are caught.** A LINQ query that compares an encrypted column throws instead of silently returning nothing.
 - **It's ready for production.** A health check and OpenTelemetry metrics and traces are built in.
 - **It works with any relational database.** It's tested with PostgreSQL, SQL Server and SQLite.
@@ -31,14 +32,15 @@ Encrypt sensitive columns in your EF Core application. You mark a property with 
 - [Encrypting properties](https://starushykart.github.io/ef-core-encryption/encrypting-properties): strings, binary data, enums, dates, value objects and complex types
 - [Key sources](https://starushykart.github.io/ef-core-encryption/key-sources): a static key, AWS KMS, or your own key management service
 - [Key management](https://starushykart.github.io/ef-core-encryption/key-management): rotation, re-encryption and moving to another KMS key
-- [Queries](https://starushykart.github.io/ef-core-encryption/queries): what you can and can't query, and how to look up encrypted values
+- [Queries](https://starushykart.github.io/ef-core-encryption/queries): what you can and can't query on encrypted columns
+- [Blind indexes](https://starushykart.github.io/ef-core-encryption/blind-indexes): looking up rows by an encrypted value
 - [Health check and OpenTelemetry](https://starushykart.github.io/ef-core-encryption/observability)
 - [How it works](https://starushykart.github.io/ef-core-encryption/how-it-works): the key hierarchy, the value format and what it protects against
 - [Troubleshooting](https://starushykart.github.io/ef-core-encryption/troubleshooting)
 
 ## Samples
 
-There are two small ASP.NET Core apps in [`samples`](samples). The [static key sample](samples/EntityFrameworkCore.Samples.Encryption.Aes) shows the different kinds of encrypted properties and how querying works. The [AWS KMS sample](samples/EntityFrameworkCore.Samples.Encryption.AwsKms) walks through key rotation, re-encryption and OpenTelemetry. Start PostgreSQL and LocalStack with `docker compose up -d`, then `dotnet run` in either of them. The [samples page](https://starushykart.github.io/ef-core-encryption/samples) has step-by-step walkthroughs.
+There are two small ASP.NET Core apps in [`samples`](samples). The [static key sample](samples/EntityFrameworkCore.Samples.Encryption.Aes) shows the different kinds of encrypted properties, how querying works and a blind index. The [AWS KMS sample](samples/EntityFrameworkCore.Samples.Encryption.AwsKms) walks through key rotation, re-encryption and OpenTelemetry. Start PostgreSQL and LocalStack with `docker compose up -d`, then `dotnet run` in either of them. The [samples page](https://starushykart.github.io/ef-core-encryption/samples) has step-by-step walkthroughs.
 
 ## Building from source
 

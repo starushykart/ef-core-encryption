@@ -9,7 +9,7 @@ public class Customer
     /// <summary>Not encrypted: can be filtered and sorted in queries.</summary>
     public string Name { get; set; } = null!;
 
-    /// <summary>Encrypted with the attribute.</summary>
+    /// <summary>Encrypted with the attribute; searchable through its blind index (see <see cref="EncryptedDbContext"/>).</summary>
     [Encrypted]
     public string Email { get; set; } = null!;
 

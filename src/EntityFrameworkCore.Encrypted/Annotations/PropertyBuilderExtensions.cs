@@ -39,4 +39,26 @@ public static class PropertyBuilderExtensions
 
         return builder;
     }
+
+    /// <summary>
+    /// Makes an encrypted property searchable by equality: a keyed hash (HMAC-SHA256) of the value is stored in an
+    /// indexed <c>{Property}_Index</c> column, and <c>==</c>, <c>!=</c> and <c>Contains</c> in queries compare it.
+    /// </summary>
+    /// <param name="normalize">
+    /// Applied to the value (after a configured conversion) before hashing, on save and in queries,
+    /// e.g. <c>v => v.Trim().ToLowerInvariant()</c> to find values regardless of case. Changing it later requires
+    /// <c>RebuildBlindIndexesAsync</c>. Only for values stored as strings.
+    /// </param>
+    /// <remarks>Reveals which rows have equal values: don't use it for columns with few distinct values.</remarks>
+    public static PropertyBuilder<TProperty> HasBlindIndex<TProperty>(this PropertyBuilder<TProperty> builder, Func<string, string>? normalize = null)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        builder.HasAnnotation(PropertyAnnotations.BlindIndex, true);
+
+        if (normalize != null)
+            builder.HasAnnotation(PropertyAnnotations.BlindIndexNormalize, normalize);
+
+        return builder;
+    }
 }
