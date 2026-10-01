@@ -6,6 +6,32 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace EntityFrameworkCore.Encrypted.Common.Plugin;
 
+internal static class EncryptionConverters
+{
+    /// <summary>Encryption converter of a property, after its configured conversion if any.</summary>
+    /// <returns><c>null</c> if the stored value is neither a string nor a byte array.</returns>
+    public static ValueConverter? Create(FieldEncryptor encryptor, ValueConverter? conversion, Type clrType)
+    {
+        if (conversion is IEncryptionConverter)
+            return conversion;
+
+        if (conversion == null)
+        {
+            return clrType == typeof(string) ? new StringEncryptionConverter(encryptor)
+                : clrType == typeof(byte[]) ? new BinaryEncryptionConverter(encryptor)
+                : null;
+        }
+
+        var composed = conversion.ProviderClrType == typeof(string) ? typeof(ComposedStringEncryptionConverter<>)
+            : conversion.ProviderClrType == typeof(byte[]) ? typeof(ComposedBinaryEncryptionConverter<>)
+            : null;
+
+        return composed == null
+            ? null
+            : (ValueConverter)Activator.CreateInstance(composed.MakeGenericType(conversion.ModelClrType), conversion, encryptor)!;
+    }
+}
+
 internal interface IEncryptionConverter
 {
     FieldEncryptor Encryptor { get; }
@@ -33,7 +59,7 @@ internal sealed class StringEncryptionConverter(FieldEncryptor encryptor)
         => Convert.ToBase64String(envelope);
 
     // the result string is the only allocation: UTF-8 bytes and the envelope use stack or pooled memory
-    private static string Encrypt(FieldEncryptor encryptor, string value)
+    internal static string Encrypt(FieldEncryptor encryptor, string value)
     {
         var plaintextLength = Encoding.UTF8.GetByteCount(value);
         var length = plaintextLength + Envelope.GetLength(plaintextLength);
@@ -58,7 +84,7 @@ internal sealed class StringEncryptionConverter(FieldEncryptor encryptor)
         }
     }
 
-    private static string Decrypt(FieldEncryptor encryptor, string value)
+    internal static string Decrypt(FieldEncryptor encryptor, string value)
     {
         // decoded length is at most 3/4 of the Base64 length; the plaintext is 35 bytes shorter than the envelope
         var maxEnvelopeLength = value.Length / 4 * 3;
@@ -94,6 +120,36 @@ internal sealed class BinaryEncryptionConverter(FieldEncryptor encryptor)
     : ValueConverter<byte[], byte[]>(
         x => encryptor.Encrypt(x),
         x => encryptor.Decrypt(x)), IEncryptionConverter
+{
+    public FieldEncryptor Encryptor => encryptor;
+
+    public byte[] ToEnvelope(object providerValue)
+        => (byte[])providerValue;
+
+    public object FromEnvelope(byte[] envelope)
+        => envelope;
+}
+
+/// <summary>Configured conversion to string (e.g. an enum as text), then encrypted as Base64 text.</summary>
+internal sealed class ComposedStringEncryptionConverter<TModel>(ValueConverter conversion, FieldEncryptor encryptor)
+    : ValueConverter<TModel, string>(
+        x => StringEncryptionConverter.Encrypt(encryptor, (string)conversion.ConvertToProvider(x)!),
+        x => (TModel)conversion.ConvertFromProvider(StringEncryptionConverter.Decrypt(encryptor, x))!), IEncryptionConverter
+{
+    public FieldEncryptor Encryptor => encryptor;
+
+    public byte[] ToEnvelope(object providerValue)
+        => Convert.FromBase64String((string)providerValue);
+
+    public object FromEnvelope(byte[] envelope)
+        => Convert.ToBase64String(envelope);
+}
+
+/// <summary>Configured conversion to binary, then encrypted.</summary>
+internal sealed class ComposedBinaryEncryptionConverter<TModel>(ValueConverter conversion, FieldEncryptor encryptor)
+    : ValueConverter<TModel, byte[]>(
+        x => encryptor.Encrypt((byte[])conversion.ConvertToProvider(x)!),
+        x => (TModel)conversion.ConvertFromProvider(encryptor.Decrypt(x))!), IEncryptionConverter
 {
     public FieldEncryptor Encryptor => encryptor;
 

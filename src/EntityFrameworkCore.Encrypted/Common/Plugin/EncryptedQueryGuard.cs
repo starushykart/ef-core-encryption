@@ -40,18 +40,24 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
             var result = new EncryptedProperties();
 
             foreach (var entityType in model.GetEntityTypes())
-            foreach (var property in entityType.GetProperties())
-            {
-                if (property.GetValueConverter() is not IEncryptionConverter)
-                    continue;
+                result.Add(entityType);
 
-                if (!result._byType.TryGetValue(entityType.ClrType, out var byName))
-                    result._byType[entityType.ClrType] = byName = [];
+            return result;
+        }
+
+        // properties of the type including inherited ones, then of its complex properties: x.Address.Street
+        private void Add(IReadOnlyTypeBase type)
+        {
+            foreach (var property in type.GetProperties().Where(x => x.GetValueConverter() is IEncryptionConverter))
+            {
+                if (!_byType.TryGetValue(type.ClrType, out var byName))
+                    _byType[type.ClrType] = byName = [];
 
                 byName[property.Name] = property;
             }
 
-            return result;
+            foreach (var complexProperty in type.GetComplexProperties())
+                Add(complexProperty.ComplexType);
         }
 
         public IReadOnlyProperty? Find(Type type, string name)
@@ -185,7 +191,7 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
         }
 
         private static EntityFrameworkEncryptionException Rejected(IReadOnlyProperty property)
-            => new($"{property.DeclaringType.DisplayName()}.{property.Name} is encrypted and can't be compared, searched, " +
+            => new($"{EncryptionConvention.DisplayName(property)} is encrypted and can't be compared, searched, " +
                    "sorted or grouped in a query: the database only sees random ciphertext, so the result would be wrong. " +
                    "Only '== null' and '!= null' are supported; filter by other columns and check the value in memory");
 

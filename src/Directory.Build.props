@@ -9,7 +9,7 @@
         <PackageValidationBaselineVersion>2.0.1-beta</PackageValidationBaselineVersion>
         <Authors>starushykart</Authors>
         <Copyright>Copyright © 2024-2026 Artem Starushyk</Copyright>
-        <Description>Application-side EF Core encryption</Description>
+        <Description>Application-side encryption of EF Core entity properties (AES-256-GCM) for any relational provider</Description>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackageProjectUrl>https://github.com/starushykart/ef-core-encryption</PackageProjectUrl>

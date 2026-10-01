@@ -12,6 +12,7 @@
         <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.12" />
         <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
         <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
+        <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.12" />
     </ItemGroup>
 
     <ItemGroup Label="AWS">
@@ -41,6 +42,7 @@
         <PackageVersion Include="MartinCostello.Logging.XUnit.v3" Version="0.7.1" />
         <PackageVersion Include="Respawn" Version="7.0.0" />
         <PackageVersion Include="Testcontainers.LocalStack" Version="4.15.0" />
+        <PackageVersion Include="Testcontainers.MsSql" Version="4.15.0" />
         <PackageVersion Include="Testcontainers.PostgreSql" Version="4.15.0" />
         <PackageVersion Include="xunit.v3" Version="4.0.1" />
     </ItemGroup>

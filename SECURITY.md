@@ -12,4 +12,4 @@ If issues or vulnerabilities are encountered with previous versions for which th
 
 ## Reporting a Vulnerability
 
-Vulnerabilities can be reported by submitting an issue.
+Please don't report vulnerabilities in public issues. Report them privately via [GitHub security advisories](https://github.com/starushykart/ef-core-encryption/security/advisories/new).

@@ -1,3 +1,4 @@
+using EntityFrameworkCore.Encrypted.Common.Diagnostics;
 using EntityFrameworkCore.Encrypted.Common.Exceptions;
 using EntityFrameworkCore.Encrypted.Keys;
 
@@ -15,7 +16,7 @@ internal sealed class WrappedRootKeyProvider(IKeyWrapper wrapper, IRootKeyStore 
         var stored = await store.GetAllAsync(dbContextType, cancellationToken);
 
         if (stored.Count > 0)
-            return await UnwrapAsync(stored.MaxBy(x => x.Id)!, cancellationToken);
+            return await UnwrapAsync(dbContextType, stored.MaxBy(x => x.Id)!, cancellationToken);
 
         if (!settings.CreateRootKeyIfMissing)
             throw new EntityFrameworkEncryptionException(
@@ -29,7 +30,7 @@ internal sealed class WrappedRootKeyProvider(IKeyWrapper wrapper, IRootKeyStore 
         var stored = await store.GetAllAsync(dbContextType, cancellationToken);
         var wrapped = stored.FirstOrDefault(x => x.Id == rootKeyId);
 
-        return wrapped == null ? null : await UnwrapAsync(wrapped, cancellationToken);
+        return wrapped == null ? null : await UnwrapAsync(dbContextType, wrapped, cancellationToken);
     }
 
     public async Task<int?> GetActiveRootKeyIdAsync(Type dbContextType, CancellationToken cancellationToken)
@@ -48,18 +49,21 @@ internal sealed class WrappedRootKeyProvider(IKeyWrapper wrapper, IRootKeyStore 
 
     public async Task<int> RewrapRootKeysAsync(Type dbContextType, CancellationToken cancellationToken)
     {
+        using var activity = Telemetry.StartActivity("root_key.rewrap", dbContextType);
         var stored = await store.GetAllAsync(dbContextType, cancellationToken);
 
         foreach (var wrapped in stored)
         {
-            var rewrapped = await wrapper.RewrapAsync(wrapped, cancellationToken);
+            var rewrapped = await Telemetry.KeyWrapperAsync(Telemetry.Operations.Rewrap, dbContextType, wrapped.Id,
+                () => wrapper.RewrapAsync(wrapped, cancellationToken));
 
             if (rewrapped.Id != wrapped.Id)
                 throw new EntityFrameworkEncryptionException(
                     $"Key wrapper returned root key {rewrapped.Id} when rewrapping root key {wrapped.Id} of {dbContextType.Name}");
 
             // the stored wrapped key is the only copy: make sure the new one can be unwrapped before replacing it
-            Array.Clear(await wrapper.UnwrapAsync(rewrapped, cancellationToken));
+            Array.Clear(await Telemetry.KeyWrapperAsync(Telemetry.Operations.Unwrap, dbContextType, rewrapped.Id,
+                () => wrapper.UnwrapAsync(rewrapped, cancellationToken)));
 
             await store.UpdateAsync(dbContextType, rewrapped with { CreatedAt = wrapped.CreatedAt }, cancellationToken);
         }
@@ -69,7 +73,8 @@ internal sealed class WrappedRootKeyProvider(IKeyWrapper wrapper, IRootKeyStore 
 
     private async Task<RootKey> CreateAsync(Type dbContextType, int rootKeyId, CancellationToken cancellationToken)
     {
-        var generated = await wrapper.GenerateAsync(rootKeyId, cancellationToken);
+        var generated = await Telemetry.KeyWrapperAsync(Telemetry.Operations.Generate, dbContextType, rootKeyId,
+            () => wrapper.GenerateAsync(rootKeyId, cancellationToken));
         var wrapped = new WrappedRootKey(rootKeyId, generated.WrappingKeyId, generated.WrappedKey, timeProvider.GetUtcNow());
 
         if (await store.TryAddAsync(dbContextType, wrapped, cancellationToken))
@@ -82,6 +87,7 @@ internal sealed class WrappedRootKeyProvider(IKeyWrapper wrapper, IRootKeyStore 
             ?? throw new EntityFrameworkEncryptionException($"Failed to store root key {rootKeyId} of {dbContextType.Name}");
     }
 
-    private async Task<RootKey> UnwrapAsync(WrappedRootKey wrapped, CancellationToken cancellationToken)
-        => new(wrapped.Id, await wrapper.UnwrapAsync(wrapped, cancellationToken));
+    private async Task<RootKey> UnwrapAsync(Type dbContextType, WrappedRootKey wrapped, CancellationToken cancellationToken)
+        => new(wrapped.Id, await Telemetry.KeyWrapperAsync(Telemetry.Operations.Unwrap, dbContextType, wrapped.Id,
+            () => wrapper.UnwrapAsync(wrapped, cancellationToken)));
 }

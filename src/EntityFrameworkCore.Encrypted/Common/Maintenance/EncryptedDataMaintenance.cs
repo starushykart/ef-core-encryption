@@ -1,5 +1,6 @@
 using System.Data.Common;
 using EntityFrameworkCore.Encrypted.Common.Crypto;
+using EntityFrameworkCore.Encrypted.Common.Diagnostics;
 using EntityFrameworkCore.Encrypted.Common.Exceptions;
 using EntityFrameworkCore.Encrypted.Common.Keys;
 using EntityFrameworkCore.Encrypted.Common.Plugin;
@@ -23,6 +24,7 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
 {
     public async Task<IReadOnlyList<KeyUsage>> GetKeyUsageAsync(Type contextType, CancellationToken cancellationToken)
     {
+        using var activity = Telemetry.StartActivity("key_usage", contextType);
         var counts = new Dictionary<(string Table, string Column, KeyId? KeyId), long>();
 
         await using var scope = scopeFactory.CreateAsyncScope();
@@ -55,6 +57,8 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(batchSize, 1);
 
+        using var activity = Telemetry.StartActivity("reencrypt", contextType)?.SetTag("batch_size", batchSize);
+
         // encrypt with the latest root key, also when it was rotated by another instance
         await keyRing.InitializeAsync(contextType, cancellationToken);
         await keyRing.RefreshAsync(contextType, cancellationToken);
@@ -84,6 +88,8 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
                 var (updated, conflicts) = await ExecuteAsync(writer.Context, pending, cancellationToken);
                 reEncrypted += updated;
                 skipped += conflicts;
+                Telemetry.RecordReEncryption(contextType, "reencrypted", updated);
+                Telemetry.RecordReEncryption(contextType, "skipped", conflicts);
                 pending.Clear();
 
                 logger.LogInformation("Re-encrypted {Count} values so far, now in {Table}", reEncrypted, table.DisplayName);
@@ -119,6 +125,9 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
         if (invalid > 0)
             logger.LogWarning("{Count} values of {Context} can't be decrypted and were left as is: not encrypted, or their root key is missing",
                 invalid, contextType.Name);
+
+        Telemetry.RecordReEncryption(contextType, "invalid", invalid);
+        activity?.SetTag("reencrypted", reEncrypted).SetTag("skipped", skipped).SetTag("invalid", invalid);
 
         return new ReEncryptionResult(reEncrypted, skipped, invalid);
     }

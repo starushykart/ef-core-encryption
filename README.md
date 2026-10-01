@@ -6,7 +6,7 @@
 [![codecov](https://codecov.io/github/starushykart/ef-core-encryption/graph/badge.svg?token=C1JOFN38GC)](https://codecov.io/github/starushykart/ef-core-encryption)
 
 ## Disclaimer
-This project is an extension of [Microsoft Entity Framework Core](https://github.com/aspnet/EntityFrameworkCore) that encrypts entity properties with AES-256-GCM, with keys managed in code or by a key management service such as AWS KMS.  
+This project is an extension of [Microsoft Entity Framework Core](https://github.com/aspnet/EntityFrameworkCore) that encrypts entity properties with AES-256-GCM, with keys managed in code or by a key management service such as AWS KMS. It works with any EF Core relational provider (tested with PostgreSQL, SQL Server and SQLite).  
   
 The authors **do not accept any responsibility** if you use or deploy this in a production environment and lose your encryption key or corrupt your data. Users are advised to thoroughly test and validate integration before using it in any production environment.
   
@@ -54,7 +54,14 @@ public class User
 modelBuilder.Entity<User>().Property(x => x.Email).IsEncrypted();
 ```
 
-`string` and `byte[]` properties are supported. Values are encrypted with AES-256-GCM and bound to their column (`"{table}.{column}"`); pass a label (`IsEncrypted("users.email")`, `[Encrypted(Label = "users.email")]`) to keep values readable after renaming the column. Strings are stored as Base64 text, binary values as binary.
+`string` and `byte[]` properties are supported, including properties of complex types. Other types are encrypted after a configured conversion to `string` or `byte[]`:
+
+```csharp
+modelBuilder.Entity<User>().Property(x => x.Status).HasConversion<string>().IsEncrypted();     // enum as text
+modelBuilder.Entity<User>().Property(x => x.Birthday).HasConversion<string>().IsEncrypted();   // DateOnly
+```
+
+Values are encrypted with AES-256-GCM and bound to their column (`"{table}.{column}"`); pass a label (`IsEncrypted("users.email")`, `[Encrypted(Label = "users.email")]`) to keep values readable after renaming the column. Strings are stored as Base64 text, binary values as binary. Encrypted columns can't have a maximum length (`MaxLength`, or a size in `HasColumnType`): it would limit the ciphertext, not the value.
 
 Every encrypted context gets an `__EncryptionKeys` table: add a migration after enabling encryption.
 
@@ -89,6 +96,24 @@ builder.Services.AddHealthChecks().AddEncryptionKeys();
 ```
 
 Healthy when the keys of every encrypted context are loaded; keys that aren't loaded yet are loaded by the check (key store migrated and reachable, key management service available). Once loaded, the check makes no calls.
+
+### OpenTelemetry
+
+```csharp
+builder.Services.AddOpenTelemetry()
+    .WithTracing(x => x.AddSource(EncryptionInstrumentation.Name))
+    .WithMetrics(x => x.AddMeter(EncryptionInstrumentation.Name));
+```
+
+| Metric | Type | Tags |
+|---|---|---|
+| `efcore.encryption.values` | counter | `db.context`, `operation` (`encrypt`, `decrypt`) |
+| `efcore.encryption.decryption.failures` | counter | `db.context`, `error.type` (`tampered`, `key_not_found`, `invalid_format`) |
+| `efcore.encryption.key_wrapper.duration` | histogram (s) | `db.context`, `operation` (`generate`, `unwrap`, `rewrap`), `error.type` |
+| `efcore.encryption.root_key.loads` | counter | `db.context`, `trigger` (`active`, `on_demand`, `refresh`), `result` |
+| `efcore.encryption.reencryption.values` | counter | `db.context`, `result` (`reencrypted`, `skipped`, `invalid`) |
+
+Traces cover key management service calls, root key loads, rotation, rewrapping, key usage and re-encryption; values are counted, not traced.
 
 ### Startup
 

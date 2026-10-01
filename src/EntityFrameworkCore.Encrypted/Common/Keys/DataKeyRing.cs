@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using EntityFrameworkCore.Encrypted.Common.Crypto;
+using EntityFrameworkCore.Encrypted.Common.Diagnostics;
 using EntityFrameworkCore.Encrypted.Common.Exceptions;
 using EntityFrameworkCore.Encrypted.Keys;
 using Microsoft.Extensions.Logging;
@@ -54,19 +55,19 @@ internal sealed class DataKeyRing(IRootKeyProvider rootKeyProvider, EncryptionSe
 
         // encrypted with a root key this instance hasn't loaded: an older one, or a newer one rotated by another instance
         if (!keys.HasRootKey(keyId.RootKeyId))
-            LoadRootKey(contextType, keys, keyId.RootKeyId);
+            LoadRootKey(contextType, keys, keyId.RootKeyId, "on_demand");
 
         return keys.GetDataKey(keyId);
     }
 
-    private void LoadRootKey(Type contextType, ContextKeys keys, ushort rootKeyId)
-        => LoadRootKeyAsync(contextType, keys, rootKeyId).GetAwaiter().GetResult();
+    private void LoadRootKey(Type contextType, ContextKeys keys, ushort rootKeyId, string trigger)
+        => LoadRootKeyAsync(contextType, keys, rootKeyId, trigger).GetAwaiter().GetResult();
 
-    private async Task LoadRootKeyAsync(Type contextType, ContextKeys keys, ushort rootKeyId)
+    private async Task LoadRootKeyAsync(Type contextType, ContextKeys keys, ushort rootKeyId, string trigger)
     {
         // one load per root key: concurrent reads right after a rotation must not each call the key management service
         var load = keys.RootKeyLoads.GetOrAdd(rootKeyId, id => new Lazy<Task<RootKey?>>(
-            () => Task.Run(() => rootKeyProvider.GetRootKeyAsync(contextType, id, CancellationToken.None))));
+            () => Task.Run(() => LoadTracedAsync(contextType, trigger, id, () => rootKeyProvider.GetRootKeyAsync(contextType, id, CancellationToken.None)))));
 
         try
         {
@@ -107,7 +108,7 @@ internal sealed class DataKeyRing(IRootKeyProvider rootKeyProvider, EncryptionSe
             var activeId = await rootKeyProvider.GetActiveRootKeyIdAsync(contextType, cancellationToken);
 
             if (activeId > keys.ActiveRootKeyId && activeId <= ushort.MaxValue)
-                await LoadRootKeyAsync(contextType, keys, (ushort)activeId.Value);
+                await LoadRootKeyAsync(contextType, keys, (ushort)activeId.Value, "refresh");
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -117,7 +118,9 @@ internal sealed class DataKeyRing(IRootKeyProvider rootKeyProvider, EncryptionSe
 
     public async Task<int> RotateRootKeyAsync(Type contextType, CancellationToken cancellationToken)
     {
+        using var activity = Telemetry.StartActivity("root_key.rotate", contextType);
         var rootKey = await rootKeyProvider.RotateRootKeyAsync(contextType, cancellationToken);
+        activity?.SetTag("root_key.id", rootKey.Id);
 
         (await GetOrStartLoad(contextType).WaitAsync(cancellationToken)).AddRootKey(rootKey);
 
@@ -174,10 +177,30 @@ internal sealed class DataKeyRing(IRootKeyProvider rootKeyProvider, EncryptionSe
     private Lazy<Task<ContextKeys>> CreateLoad(Type contextType)
         => new(() => Task.Run(async () =>
         {
-            var rootKey = await rootKeyProvider.GetActiveRootKeyAsync(contextType, CancellationToken.None);
-            logger.LogInformation("Root key {RootKeyId} of {Context} loaded", rootKey.Id, contextType.Name);
+            var rootKey = await LoadTracedAsync(contextType, "active", null,
+                async () => (RootKey?)await rootKeyProvider.GetActiveRootKeyAsync(contextType, CancellationToken.None));
+            logger.LogInformation("Root key {RootKeyId} of {Context} loaded", rootKey!.Id, contextType.Name);
             return new ContextKeys(rootKey);
         }));
+
+    private static async Task<RootKey?> LoadTracedAsync(Type contextType, string trigger, int? rootKeyId, Func<Task<RootKey?>> load)
+    {
+        using var activity = Telemetry.StartActivity("root_key.load", contextType)?.SetTag("trigger", trigger);
+
+        try
+        {
+            var rootKey = await load();
+            activity?.SetTag("root_key.id", rootKey?.Id ?? rootKeyId);
+            Telemetry.RecordRootKeyLoad(contextType, trigger, rootKey == null ? new KeyNotFoundException() : null);
+            return rootKey;
+        }
+        catch (Exception ex)
+        {
+            activity.SetError(ex);
+            Telemetry.RecordRootKeyLoad(contextType, trigger, ex);
+            throw;
+        }
+    }
 
     private sealed class ContextKeys
     {

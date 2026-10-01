@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using EntityFrameworkCore.Encrypted.Common.Diagnostics;
 using EntityFrameworkCore.Encrypted.Common.Exceptions;
 using EntityFrameworkCore.Encrypted.Common.Keys;
 
@@ -12,6 +13,7 @@ namespace EntityFrameworkCore.Encrypted.Common.Crypto;
 internal sealed class FieldEncryptor(DataKeyRing? keyRing, Type contextType, string label)
 {
     private readonly byte[] _label = Encoding.UTF8.GetBytes(label);
+    private readonly string _contextName = contextType.Name;
 
     public string Label => label;
 
@@ -20,6 +22,7 @@ internal sealed class FieldEncryptor(DataKeyRing? keyRing, Type contextType, str
     {
         var (keyId, key) = GetKeyRing().GetEncryptionKey(contextType);
         Envelope.Seal(key, keyId, _label, plaintext, envelope);
+        Telemetry.RecordValue(_contextName, Telemetry.Operations.Encrypt);
     }
 
     public byte[] Encrypt(ReadOnlySpan<byte> plaintext)
@@ -32,8 +35,28 @@ internal sealed class FieldEncryptor(DataKeyRing? keyRing, Type contextType, str
     /// <param name="plaintext">Destination of <see cref="Envelope.GetPlaintextLength"/> bytes.</param>
     public void Decrypt(ReadOnlySpan<byte> envelope, Span<byte> plaintext)
     {
-        var keyId = Envelope.ReadKeyId(envelope);
-        var key = GetKeyRing().GetDecryptionKey(contextType, keyId);
+        KeyId keyId;
+        DataKey key;
+
+        try
+        {
+            keyId = Envelope.ReadKeyId(envelope);
+        }
+        catch (EntityFrameworkEncryptionException)
+        {
+            Telemetry.RecordDecryptionFailure(_contextName, "invalid_format");
+            throw;
+        }
+
+        try
+        {
+            key = GetKeyRing().GetDecryptionKey(contextType, keyId);
+        }
+        catch (EntityFrameworkEncryptionException)
+        {
+            Telemetry.RecordDecryptionFailure(_contextName, "key_not_found");
+            throw;
+        }
 
         try
         {
@@ -41,9 +64,12 @@ internal sealed class FieldEncryptor(DataKeyRing? keyRing, Type contextType, str
         }
         catch (AuthenticationTagMismatchException ex)
         {
+            Telemetry.RecordDecryptionFailure(_contextName, "tampered");
             throw new EntityFrameworkEncryptionException(
                 $"Can't decrypt value of '{label}' ({keyId}): it was modified or encrypted for another column", ex);
         }
+
+        Telemetry.RecordValue(_contextName, Telemetry.Operations.Decrypt);
     }
 
     public byte[] Decrypt(ReadOnlySpan<byte> envelope)

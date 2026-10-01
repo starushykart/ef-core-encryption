@@ -1,6 +1,6 @@
 # EntityFrameworkCore.Encrypted
 
-Application-side encryption of EF Core entity properties with AES-256-GCM. Values are encrypted before they reach the database and decrypted when they are read.
+Application-side encryption of EF Core entity properties with AES-256-GCM, for any EF Core relational provider. Values are encrypted before they reach the database and decrypted when they are read.
 
 ## Usage
 
@@ -30,7 +30,7 @@ Add a migration after enabling encryption: every encrypted context gets an `__En
 
 ## Features
 
-- `string` and `byte[]` properties; `null` stays `null`
+- `string` and `byte[]` properties, other types after `HasConversion<string>()`, complex types; `null` stays `null`
 - Tamper detection, values bound to their column
 - Key rotation without re-encrypting data; `ReEncryptAsync` and `GetKeyUsageAsync` to retire old keys
 - Envelope encryption with a key management service: [EntityFrameworkCore.Encrypted.AwsKms](https://www.nuget.org/packages/EntityFrameworkCore.Encrypted.AwsKms)
