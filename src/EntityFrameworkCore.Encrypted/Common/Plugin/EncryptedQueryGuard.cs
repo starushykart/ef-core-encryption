@@ -336,10 +336,22 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
             if (node.Object != null)
                 RejectValue(node.Object);
 
-            // string.IsNullOrEmpty(x.Secret), list.Contains(x.Secret), EF.Functions.Like(x.Secret, ...), ...;
-            // sequences are checked by the operators comparing their elements: g.Count() only counts
+            // string.IsNullOrEmpty(x.Secret), list.Contains(x.Secret), EF.Functions.Like(x.Secret, ...), ...
             if (IsTranslatedByDatabase(node))
-                Reject([..node.Arguments.Where((_, i) => !IsSequence(node.Method.GetParameters()[i].ParameterType))]);
+            {
+                var parameters = node.Method.GetParameters();
+
+                for (var i = 0; i < node.Arguments.Count; i++)
+                {
+                    // groups and projected sequences are checked by the operators comparing their elements (g.Count()
+                    // only counts); an encrypted byte array is a sequence too, but its value is the ciphertext:
+                    // x.Blob.SequenceEqual(bytes), x.Blob.Contains(1)
+                    if (IsSequence(parameters[i].ParameterType))
+                        RejectValue(node.Arguments[i]);
+                    else
+                        Reject(node.Arguments[i]);
+                }
+            }
 
             if (IsSequenceOperator(node))
                 CheckSequenceOperator(node);

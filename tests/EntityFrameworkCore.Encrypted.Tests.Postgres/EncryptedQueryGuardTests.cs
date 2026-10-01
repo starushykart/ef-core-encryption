@@ -35,6 +35,8 @@ public class EncryptedQueryGuardTests : IDisposable
             { "two encrypted columns", q => q.Where(x => x.Text == x.Other) },
             { "binary", q => q.Where(x => x.Blob == bytes) },
             { "binary length", q => q.Where(x => x.Blob!.Length > 1) },
+            { "binary sequence equal", q => q.Where(x => x.Blob!.SequenceEqual(bytes)) },
+            { "binary contains byte", q => q.Where(x => x.Blob!.Contains((byte)1)) },
             { "string method", q => q.Where(x => x.Text!.StartsWith(value)) },
             { "string length", q => q.Where(x => x.Text!.Length > 1) },
             { "is null or empty", q => q.Where(x => string.IsNullOrEmpty(x.Text)) },
