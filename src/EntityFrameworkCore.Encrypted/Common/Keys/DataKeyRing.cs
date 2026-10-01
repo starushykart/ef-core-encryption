@@ -25,8 +25,9 @@ internal sealed class DataKeyRing(
     private readonly ConcurrentDictionary<Type, bool> _usesBlindIndexes = new();
     private readonly ConcurrentBag<Action> _onDispose = [];
 
-    // data key versions a newer deployment may use: stored values can't fill the data key cache with any version
-    private const uint NewerDataKeyVersions = 1024;
+    // data key versions newer than configured that are cached per context: a newer deployment uses one, stored values
+    // with random versions (legacy ciphertext, tampering) can't fill the cache
+    private const int NewerDataKeyVersions = 16;
 
     /// <summary>Reads stored values that aren't in the library's format, while migrating to it.</summary>
     public ILegacyDecryptor? LegacyDecryptor => legacyDecryptor;
@@ -123,7 +124,7 @@ internal sealed class DataKeyRing(
         var keys = GetContextKeys(contextType);
         var keyId = new KeyId(keys.ActiveRootKeyId, settings.DataKeyVersion);
 
-        return (keyId, keys.GetDataKey(keyId));
+        return (keyId, keys.GetDataKey(keyId, settings.DataKeyVersion, contextType));
     }
 
     public DataKey GetDecryptionKey(Type contextType, KeyId keyId)
@@ -134,22 +135,16 @@ internal sealed class DataKeyRing(
         if (keyId.RootKeyId == 0)
             throw new EntityFrameworkEncryptionException($"Root key 0 of {contextType.Name} not found");
 
-        if (keyId.DataKeyVersion > (ulong)settings.DataKeyVersion + NewerDataKeyVersions)
-            throw new EntityFrameworkEncryptionException(
-                $"Data key version {keyId.DataKeyVersion} of {contextType.Name} is far newer than the configured version {settings.DataKeyVersion}");
-
         // encrypted with a root key this instance hasn't loaded: an older one, or a newer one rotated by another instance
         if (!keys.HasRootKey(keyId.RootKeyId))
             LoadRootKey(contextType, keys, keyId.RootKeyId, "on_demand");
 
-        return keys.GetDataKey(keyId);
+        return keys.GetDataKey(keyId, settings.DataKeyVersion, contextType);
     }
 
     /// <summary>Whether a value can be decrypted without loading another root key on demand.</summary>
     public bool HasDecryptionKey(Type contextType, KeyId keyId)
-        => keyId.RootKeyId != 0
-           && keyId.DataKeyVersion <= (ulong)settings.DataKeyVersion + NewerDataKeyVersions
-           && GetContextKeys(contextType).HasRootKey(keyId.RootKeyId);
+        => keyId.RootKeyId != 0 && GetContextKeys(contextType).HasRootKey(keyId.RootKeyId);
 
     private void LoadRootKey(Type contextType, ContextKeys keys, ushort rootKeyId, string trigger)
         => LoadRootKeyAsync(contextType, keys, rootKeyId, trigger).GetAwaiter().GetResult();
@@ -364,14 +359,27 @@ internal sealed class DataKeyRing(
             return true;
         }
 
+        private int _newerVersions;
+
         // Lazy: a data key created by a losing GetOrAdd race would never be disposed
-        public DataKey GetDataKey(KeyId keyId)
-            => _dataKeys.GetOrAdd(keyId, static (id, rootKeys) => new Lazy<DataKey>(() => new DataKey(HKDF.DeriveKey(
+        public DataKey GetDataKey(KeyId keyId, uint configuredVersion, Type contextType)
+        {
+            if (keyId.DataKeyVersion > configuredVersion && !_dataKeys.ContainsKey(keyId)
+                && Interlocked.Increment(ref _newerVersions) > NewerDataKeyVersions)
+            {
+                Interlocked.Decrement(ref _newerVersions);
+                throw new EntityFrameworkEncryptionException(
+                    $"Data key version {keyId.DataKeyVersion} of {contextType.Name} isn't configured, and more than " +
+                    $"{NewerDataKeyVersions} newer versions than the configured {configuredVersion} were read: the value is likely corrupted");
+            }
+
+            return _dataKeys.GetOrAdd(keyId, static (id, rootKeys) => new Lazy<DataKey>(() => new DataKey(HKDF.DeriveKey(
                     HashAlgorithmName.SHA256,
                     rootKeys[id.RootKeyId],
                     Envelope.KeySize,
                     info: Encoding.UTF8.GetBytes($"efenc:dek:v{id.DataKeyVersion}")))),
                 _rootKeys).Value;
+        }
 
         public void Clear()
         {

@@ -56,6 +56,19 @@ public class KeyRotationTests
     }
 
     [Fact]
+    public void Should_read_values_of_any_newer_data_key_version()
+    {
+        // e.g. date-based versions: a newer deployment rolls out while older instances still read
+        var key = RandomNumberGenerator.GetBytes(32);
+        using var newer = DocumentDbContext.BuildProvider(x => x.UseKey(key).UseDataKeyVersion(20261001));
+        using var older = DocumentDbContext.BuildProvider(x => x.UseKey(key));
+
+        var value = Encrypt(DocumentDbContext.GetConverter(newer, nameof(Document.Blob)), [1]);
+
+        Decrypt(DocumentDbContext.GetConverter(older, nameof(Document.Blob)), value).Should().Equal(1);
+    }
+
+    [Fact]
     public void Should_reject_an_active_static_key_that_is_not_configured()
     {
         var act = () => DocumentDbContext.BuildProvider(x => x.UseKey(RandomNumberGenerator.GetBytes(32)).UseActiveKey(2));

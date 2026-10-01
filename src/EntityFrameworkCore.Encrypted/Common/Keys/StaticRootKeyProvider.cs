@@ -25,6 +25,9 @@ internal sealed class StaticRootKeyProvider(
     private const int TagSize = 16;
     private static readonly byte[] AssociatedData = Encoding.UTF8.GetBytes("efenc:index-key");
 
+    // the static key derives data keys: the blind index key is wrapped with a key derived for that purpose
+    private static readonly byte[] WrappingKeyInfo = Encoding.UTF8.GetBytes("efenc:wrap:index-key");
+
     private int ActiveId => activeId;
 
     public Task<RootKey> GetActiveRootKeyAsync(Type dbContextType, CancellationToken cancellationToken)
@@ -96,11 +99,14 @@ internal sealed class StaticRootKeyProvider(
         var nonce = wrapped.AsSpan(0, NonceSize);
         RandomNumberGenerator.Fill(nonce);
 
-        using var aes = new AesGcm(keys[ActiveId], TagSize);
+        using var aes = new AesGcm(DeriveWrappingKey(keys[ActiveId]), TagSize);
         aes.Encrypt(nonce, indexKey, wrapped.AsSpan(NonceSize, indexKey.Length), wrapped.AsSpan(NonceSize + indexKey.Length), AssociatedData);
 
         return new WrappedRootKey(IRootKeyProvider.IndexKeyId, WrappingKeyPrefix + ActiveId.ToString(CultureInfo.InvariantCulture), wrapped, createdAt);
     }
+
+    private static byte[] DeriveWrappingKey(byte[] staticKey)
+        => HKDF.DeriveKey(HashAlgorithmName.SHA256, staticKey, 32, info: WrappingKeyInfo);
 
     private byte[] Unwrap(Type dbContextType, WrappedRootKey stored, int wrappingKeyId)
     {
@@ -116,7 +122,7 @@ internal sealed class StaticRootKeyProvider(
 
         try
         {
-            using var aes = new AesGcm(key, TagSize);
+            using var aes = new AesGcm(DeriveWrappingKey(key), TagSize);
             aes.Decrypt(
                 stored.WrappedKey.AsSpan(0, NonceSize),
                 stored.WrappedKey.AsSpan(NonceSize, indexKey.Length),

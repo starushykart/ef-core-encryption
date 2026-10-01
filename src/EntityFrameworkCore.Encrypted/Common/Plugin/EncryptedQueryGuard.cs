@@ -161,6 +161,23 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
 
         protected override Expression VisitMethodCall(MethodCallExpression node)
         {
+            // x.Email.Equals(email), string.Equals(x.Email, email), Equals(email, x.Email): like ==; overloads with a
+            // StringComparison can't be compared on hashes and are left to the guard
+            if (node.Method.Name == nameof(Equals) && node.Method.ReturnType == typeof(bool)
+                && (node.Object, node.Arguments) switch
+                {
+                    ({ } instance, [var argument]) => (instance, argument),
+                    (null, [var first, var second]) => (first, second),
+                    _ => ((Expression, Expression)?)null
+                } is var (left, right))
+            {
+                if (IsValue(right) && ToIndex(StripConvert(left)) is { } leftIndex)
+                    return Expression.Equal(leftIndex, As(Visit(StripConvert(right)), leftIndex.Type));
+
+                if (IsValue(left) && ToIndex(StripConvert(right)) is { } rightIndex)
+                    return Expression.Equal(As(Visit(StripConvert(left)), rightIndex.Type), rightIndex);
+            }
+
             // values.Contains(x.Email), Enumerable.Contains(values, x.Email)
             if (node.Method.Name == nameof(Enumerable.Contains))
             {
@@ -234,6 +251,9 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
         // query parameters and constants: hashed by EF with the converter of the index; null checks stay on the column
         private static bool IsValue(Expression expression)
             => StripConvert(expression) is QueryParameterExpression or ConstantExpression { Value: not null and not IQueryable };
+
+        private static Expression As(Expression expression, Type type)
+            => expression.Type == type ? expression : Expression.Convert(expression, type);
 
         private static bool IsNullValue(Expression expression)
             => StripConvert(expression) is ConstantExpression { Value: null } or DefaultExpression;

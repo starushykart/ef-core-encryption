@@ -119,6 +119,11 @@ public string EmailAddress { get; set; } = null!;
 {: .tip }
 If you expect to rename things, set explicit labels like `"customers.email"` from day one. Then you never have to think about it.
 
+Labels follow the mapping:
+
+- With entity splitting (`SplitToTable`), a property gets the table it's moved to: `CustomerDetails.Email`.
+- With TPC, a property declared on the base type is stored in every concrete table but has one label, from the base type's table, or `Base.Property` when the base type is abstract. Values of that property can be moved between those tables. If that matters to you, declare the property on each concrete type instead. Making an abstract base type concrete later changes the label, so set an explicit label first.
+
 ## Why there's no maximum length
 
 Putting `[MaxLength]`, `HasMaxLength` or a sized column type like `varchar(100)` on an encrypted property throws when the model is built. That's deliberate. The ciphertext is 35 bytes longer than your value, and strings grow by another third when they're Base64 encoded, so the limit would cut off ciphertext at unexpected points. Validate the length of the value in your application instead.

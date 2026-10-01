@@ -7,6 +7,7 @@ using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Extensions;
 using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Keys;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -52,6 +53,9 @@ public abstract class BlindIndexProviderTests(ITestOutputHelper helper) : IAsync
         (await db.People.Where(x => x.Ssn != ssn).Select(x => x.Name).ToListAsync()).Should().BeEquivalentTo("john", "max");
         (await db.People.CountAsync(x => x.Ssn == "111-22-3333 ")).Should().Be(0, "only the email is normalized");
         (await db.People.SingleAsync(x => x.Contact!.Phone == "+1 555 0100")).Name.Should().Be("jane");
+        (await db.People.SingleAsync(x => x.Email!.Equals(email))).Name.Should().Be("jane");
+        (await db.People.SingleAsync(x => string.Equals(ssn, x.Ssn))).Name.Should().Be("jane");
+        (await db.People.SingleAsync(x => Equals(x.Status, PersonStatus.Blocked))).Name.Should().Be("john");
     }
 
     [Fact]
@@ -308,6 +312,27 @@ public abstract class BlindIndexProviderTests(ITestOutputHelper helper) : IAsync
         await using var verify = _provider.CreateAsyncScope();
         (await verify.ServiceProvider.GetRequiredService<BlindIndexDbContext>().People.SingleAsync(x => x.Email == "max@example.com"))
             .Name.Should().Be("max");
+    }
+
+    [Fact]
+    public async Task Should_clear_blind_indexes_of_null_values_when_rebuilding()
+    {
+        var people = await AddPeopleAsync(_provider);
+
+        // a value removed with SQL, its blind index left behind
+        await using (var scope = _provider.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BlindIndexDbContext>();
+            var sql = db.GetService<Microsoft.EntityFrameworkCore.Storage.ISqlGenerationHelper>();
+            await db.Database.ExecuteSqlRawAsync(
+                $"UPDATE {sql.DelimitIdentifier("People")} SET {sql.DelimitIdentifier("Email")} = NULL WHERE {sql.DelimitIdentifier("Name")} = 'max'");
+        }
+
+        (await _provider.RebuildBlindIndexesAsync<BlindIndexDbContext>()).Should().Be(1);
+
+        await using var verify = _provider.CreateAsyncScope();
+        (await verify.ServiceProvider.GetRequiredService<BlindIndexDbContext>().People.CountAsync(x => x.Email == people[2].Email))
+            .Should().Be(0);
     }
 
     public async ValueTask DisposeAsync()

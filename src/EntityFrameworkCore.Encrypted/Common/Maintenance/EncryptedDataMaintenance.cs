@@ -179,15 +179,20 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
                 {
                     var column = table.Columns[i];
 
-                    if (column.Index is not { } index || values[i] is not { } value)
+                    if (column.Index is not { } index)
                         continue;
 
-                    var hash = TryComputeIndex(table, column, value);
-
-                    if (hash == null || values[table.Columns.Count + i] is byte[] stored && stored.AsSpan().SequenceEqual(hash))
-                        continue;
-
-                    pending.Add(new Update(table, index.Store, column.Store, keys, value, hash));
+                    // no value, but an index (e.g. written with SQL): lookups would still find the row
+                    if (values[i] is not { } value)
+                    {
+                        if (values[table.Columns.Count + i] != null)
+                            pending.Add(new Update(table, index.Store, column.Store, keys, OldValue: null, NewValue: null));
+                    }
+                    else if (TryComputeIndex(table, column, value) is { } hash
+                             && !(values[table.Columns.Count + i] is byte[] stored && stored.AsSpan().SequenceEqual(hash)))
+                    {
+                        pending.Add(new Update(table, index.Store, column.Store, keys, value, hash));
+                    }
 
                     if (pending.Count >= batchSize)
                         await FlushAsync();
@@ -301,7 +306,10 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
         var columns = string.Join(", ", keys
             .Concat(table.Columns.Select(x => sql.DelimitIdentifier(x.Name)))
             .Concat(table.Columns.Select(x => x.Index is { } index ? sql.DelimitIdentifier(index.Store.Name) : "NULL")));
-        var notNull = $"({string.Join(" OR ", table.Columns.Select(x => $"{sql.DelimitIdentifier(x.Name)} IS NOT NULL"))})";
+        // blind indexes too: an index without a value is cleared by the rebuild
+        var notNull = $"({string.Join(" OR ", table.Columns
+            .SelectMany(x => x.Index is { } index ? [x.Name, index.Store.Name] : new[] { x.Name })
+            .Select(x => $"{sql.DelimitIdentifier(x)} IS NOT NULL"))})";
         var paged = keys.Count > 0;
         object[]? last = null;
 
@@ -331,9 +339,7 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
                 var from = $"FROM {sql.DelimitIdentifier(table.Name, table.Schema)} WHERE {where}";
 
                 command.CommandText = !paged ? $"SELECT {columns} {from}"
-                    : context.Database.ProviderName == "Microsoft.EntityFrameworkCore.SqlServer"
-                        ? $"SELECT TOP ({PageSize}) {columns} {from} ORDER BY {string.Join(", ", keys)}"
-                        : $"SELECT {columns} {from} ORDER BY {string.Join(", ", keys)} LIMIT {PageSize}";
+                    : $"SELECT {columns} {from} ORDER BY {string.Join(", ", keys)} {Limit(context.Database.ProviderName)}";
 
                 await using var reader = await command.ExecuteReaderAsync(cancellationToken);
 
@@ -416,12 +422,18 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
             return (updated, updates.Count(x => x.Counted) - updated);
         }, cancellationToken);
 
+    // the SQL standard (SQL Server, PostgreSQL, Oracle, Db2, Firebird), except providers that only support LIMIT
+    private static string Limit(string? provider)
+        => provider is "Microsoft.EntityFrameworkCore.Sqlite" or "Pomelo.EntityFrameworkCore.MySql" or "MySql.EntityFrameworkCore"
+            ? $"LIMIT {PageSize}"
+            : $"OFFSET 0 ROWS FETCH NEXT {PageSize} ROWS ONLY";
+
     private static void AddParameter(
         DbParameterCollection parameters, DbCommand factory, ISqlGenerationHelper sql, string name, RelationalTypeMapping mapping, object value)
     {
         // configured without a value: values are as read from or written to the column, the converter of the
         // mapping (e.g. of a strongly typed id) must not run on them
-        var parameter = mapping.CreateParameter(factory, sql.GenerateParameterName(name), null, nullable: false);
+        var parameter = mapping.CreateParameter(factory, sql.GenerateParameterName(name), null, nullable: value == DBNull.Value);
         parameter.Value = value;
         parameters.Add(parameter);
     }
@@ -517,7 +529,7 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
     /// <param name="CheckedColumn">Encrypted column that must still contain <paramref name="OldValue"/>.</param>
     /// <param name="Counted">Counted in the result: <c>false</c> for blind indexes set along with re-encrypted values.</param>
     private sealed record Update(
-        EncryptedTable Table, StoreColumn Column, StoreColumn CheckedColumn, object[] Keys, object OldValue, object NewValue, bool Counted = true)
+        EncryptedTable Table, StoreColumn Column, StoreColumn CheckedColumn, object[] Keys, object? OldValue, object? NewValue, bool Counted = true)
     {
         public string ToSql(ISqlGenerationHelper sql)
         {
@@ -525,14 +537,17 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
 
             return $"UPDATE {sql.DelimitIdentifier(Table.Name, Table.Schema)} " +
                    $"SET {sql.DelimitIdentifier(Column.Name)} = {sql.GenerateParameterNamePlaceholder("new_value")} " +
-                   $"WHERE {string.Join(" AND ", keys)} AND {sql.DelimitIdentifier(CheckedColumn.Name)} = {sql.GenerateParameterNamePlaceholder("old_value")}";
+                   $"WHERE {string.Join(" AND ", keys)} AND {sql.DelimitIdentifier(CheckedColumn.Name)} " +
+                   (OldValue == null ? "IS NULL" : $"= {sql.GenerateParameterNamePlaceholder("old_value")}");
         }
 
         /// <param name="factory">Creates the parameters, configured by the type mapping of their column.</param>
         public void AddParameters(DbParameterCollection parameters, DbCommand factory, ISqlGenerationHelper sql)
         {
-            Add("new_value", Column.Mapping, NewValue);
-            Add("old_value", CheckedColumn.Mapping, OldValue);
+            Add("new_value", Column.Mapping, NewValue ?? DBNull.Value);
+
+            if (OldValue != null)
+                Add("old_value", CheckedColumn.Mapping, OldValue);
 
             for (var i = 0; i < Keys.Length; i++)
                 Add($"k{i}", Table.KeyColumns[i].Mapping, Keys[i]);
