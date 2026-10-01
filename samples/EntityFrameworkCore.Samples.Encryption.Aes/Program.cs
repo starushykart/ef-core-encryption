@@ -55,26 +55,18 @@ app.MapGet("/customers", (string? name, EncryptedDbContext context, Cancellation
         .OrderBy(x => x.Name)
         .ToListAsync(ct));
 
-// encrypted columns can't be compared in the database: narrow down by other columns, then check the value in memory
-app.MapGet("/customers/by-email", async (string email, string? name, EncryptedDbContext context, CancellationToken ct) =>
-{
-    var candidates = context.Customers.AsNoTracking().Where(x => name == null || x.Name.StartsWith(name));
+// the email has a blind index: equality queries compare its keyed hash, so they work and use a database index
+app.MapGet("/customers/by-email", async (string email, EncryptedDbContext context, CancellationToken ct)
+    => await context.Customers.FirstOrDefaultAsync(x => x.Email == email, ct) is { } customer
+        ? Results.Ok(customer)
+        : Results.NotFound());
 
-    await foreach (var customer in candidates.AsAsyncEnumerable().WithCancellation(ct))
-    {
-        if (string.Equals(customer.Email, email, StringComparison.OrdinalIgnoreCase))
-            return Results.Ok(customer);
-    }
-
-    return Results.NotFound();
-});
-
-// comparing an encrypted column in a query throws instead of silently returning nothing
-app.MapGet("/customers/by-email/unsupported", async (string email, EncryptedDbContext context, CancellationToken ct) =>
+// the phone has no blind index: comparing it in a query throws instead of silently returning nothing
+app.MapGet("/customers/by-phone", async (string phone, EncryptedDbContext context, CancellationToken ct) =>
 {
     try
     {
-        return Results.Ok(await context.Customers.Where(x => x.Email == email).ToListAsync(ct));
+        return Results.Ok(await context.Customers.Where(x => x.Phone == phone).ToListAsync(ct));
     }
     catch (EntityFrameworkEncryptionException ex)
     {

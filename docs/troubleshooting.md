@@ -1,6 +1,6 @@
 ---
 title: Troubleshooting
-nav_order: 10
+nav_order: 11
 ---
 
 # Troubleshooting
@@ -16,6 +16,22 @@ These are the errors people run into most often, what causes them and how to fix
 ## "... is encrypted and can't be compared, searched, sorted or grouped in a query"
 
 A query tries to filter, sort or group by an encrypted column in the database. That can't work, because the database only sees random ciphertext. Filter by other columns and check the encrypted value in memory, or add a hash column for lookups. [Queries](queries) explains both.
+
+## "... has a blind index but isn't encrypted"
+
+`[BlindIndex]` or `HasBlindIndex()` is only for encrypted properties. Add `[Encrypted]` or `IsEncrypted()` as well.
+
+## "... has a blind index and can only be set to a value in ExecuteUpdate"
+
+`ExecuteUpdate` tried to set a blind-indexed property from another column, for example `s.SetProperty(x => x.Email, x => x.Login)`. The database can't compute the hash, so set it to a value, or load the entities and use `SaveChanges`.
+
+## A blind index lookup doesn't find existing rows
+
+Rows written before you added the blind index, or before you changed its normalization, still have an empty or outdated index. Run [`RebuildBlindIndexesAsync`](blind-indexes#adding-an-index-to-existing-data).
+
+## "Blind index key ... is wrapped with static key N, which is no longer configured"
+
+You removed an old static key before the app had started once with both the old and the new key, so the blind index key couldn't be rewrapped. Add the old key back, start the app once, then remove it.
 
 ## "... is encrypted and can't have a maximum length"
 
@@ -78,6 +94,6 @@ The key table doesn't exist yet. Add a migration after enabling encryption. If m
 ## Limitations
 
 - **Relational providers only.** The library relies on EF Core's relational model; Cosmos DB and the in-memory provider aren't supported.
-- **No searching in the database.** That's the trade-off of random nonces; see [Queries](queries).
+- **No searching in the database beyond equality.** That's the trade-off of random nonces. [Blind indexes](blind-indexes) cover equality lookups, and [Queries](queries) covers the rest.
 - **No row binding.** A value can't be moved to another column, but it can be swapped with the value of the same column in another row.
 - **Raw SQL isn't checked.** `FromSql` and `ExecuteSql` run as written, and raw SQL sees ciphertext.

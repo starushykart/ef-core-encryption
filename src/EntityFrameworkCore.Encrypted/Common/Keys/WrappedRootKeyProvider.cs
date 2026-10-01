@@ -13,7 +13,7 @@ internal sealed class WrappedRootKeyProvider(IKeyWrapper wrapper, IRootKeyStore 
 {
     public async Task<RootKey> GetActiveRootKeyAsync(Type dbContextType, CancellationToken cancellationToken)
     {
-        var stored = await store.GetAllAsync(dbContextType, cancellationToken);
+        var stored = await GetRootKeysAsync(dbContextType, cancellationToken);
 
         if (stored.Count > 0)
             return await UnwrapAsync(dbContextType, stored.MaxBy(x => x.Id)!, cancellationToken);
@@ -35,17 +35,33 @@ internal sealed class WrappedRootKeyProvider(IKeyWrapper wrapper, IRootKeyStore 
 
     public async Task<int?> GetActiveRootKeyIdAsync(Type dbContextType, CancellationToken cancellationToken)
     {
-        var stored = await store.GetAllAsync(dbContextType, cancellationToken);
+        var stored = await GetRootKeysAsync(dbContextType, cancellationToken);
         return stored.Count == 0 ? null : stored.Max(x => x.Id);
     }
 
     public async Task<RootKey> RotateRootKeyAsync(Type dbContextType, CancellationToken cancellationToken)
     {
-        var stored = await store.GetAllAsync(dbContextType, cancellationToken);
+        var stored = await GetRootKeysAsync(dbContextType, cancellationToken);
         var nextId = stored.Count == 0 ? 1 : stored.Max(x => x.Id) + 1;
 
         return await CreateAsync(dbContextType, nextId, cancellationToken);
     }
+
+    public async Task<byte[]> GetIndexKeyAsync(Type dbContextType, CancellationToken cancellationToken)
+    {
+        if (await GetRootKeyAsync(dbContextType, IRootKeyProvider.IndexKeyId, cancellationToken) is { } existing)
+            return existing.Key;
+
+        if (!settings.CreateRootKeyIfMissing)
+            throw new EntityFrameworkEncryptionException(
+                $"Blind index key of {dbContextType.Name} not found and creating it is disabled");
+
+        return (await CreateAsync(dbContextType, IRootKeyProvider.IndexKeyId, cancellationToken)).Key;
+    }
+
+    // the blind index key is stored next to the root keys and wrapped the same way, but isn't one of them
+    private async Task<List<WrappedRootKey>> GetRootKeysAsync(Type dbContextType, CancellationToken cancellationToken)
+        => (await store.GetAllAsync(dbContextType, cancellationToken)).Where(x => x.Id != IRootKeyProvider.IndexKeyId).ToList();
 
     public async Task<int> RewrapRootKeysAsync(Type dbContextType, CancellationToken cancellationToken)
     {

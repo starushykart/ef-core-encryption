@@ -41,6 +41,7 @@ That's what ends up in the table:
 - **More than strings.** You can encrypt `byte[]`, enums, dates, value objects and properties of complex types.
 - **Pick where keys come from.** Use a [static key](key-sources#static-key) from your configuration, [AWS KMS](key-sources#aws-kms), or [your own key management service](key-sources#custom-key-management).
 - **Rotate keys without downtime.** Old values stay readable, and you can [re-encrypt](key-management#re-encrypting-existing-values) them in the background.
+- **Search by encrypted values.** Add a [blind index](blind-indexes) and `Where(x => x.Email == email)` works, using a database index.
 - **Mistakes in queries are caught.** A LINQ query that compares an encrypted column [throws](queries) instead of silently returning nothing.
 - **Production ready.** A [health check and OpenTelemetry](observability) metrics and traces are built in.
 - **Works with any relational database.** It's tested with PostgreSQL, SQL Server and SQLite.

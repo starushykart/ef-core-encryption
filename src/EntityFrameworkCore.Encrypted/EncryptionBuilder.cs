@@ -63,7 +63,9 @@ public sealed class EncryptionBuilder
         return UseKeyWrapper(ServiceDescriptor.Singleton(factory));
     }
 
-    /// <summary>Stores wrapped root keys in a custom store instead of the <c>__EncryptionKeys</c> table.</summary>
+    /// <summary>
+    /// Stores wrapped root keys and the blind index key in a custom store instead of the <c>__EncryptionKeys</c> table.
+    /// </summary>
     public EncryptionBuilder UseRootKeyStore(Func<IServiceProvider, IRootKeyStore> factory)
     {
         ArgumentNullException.ThrowIfNull(factory);
@@ -123,14 +125,19 @@ public sealed class EncryptionBuilder
 
         Services.TryAddSingleton(_settings);
 
+        // static keys use the store only for the blind index key
+        Services.TryAdd(_rootKeyStore ?? ServiceDescriptor.Singleton<IRootKeyStore, DbContextRootKeyStore>());
+
         if (_rootKeyProvider != null)
             Services.TryAdd(_rootKeyProvider);
         else if (_staticKeys.Count > 0)
-            Services.TryAddSingleton<IRootKeyProvider>(new StaticRootKeyProvider(new Dictionary<int, byte[]>(_staticKeys)));
+        {
+            var keys = new Dictionary<int, byte[]>(_staticKeys);
+            Services.TryAddSingleton<IRootKeyProvider>(sp => ActivatorUtilities.CreateInstance<StaticRootKeyProvider>(sp, keys));
+        }
         else
         {
             Services.TryAdd(_keyWrapper!);
-            Services.TryAdd(_rootKeyStore ?? ServiceDescriptor.Singleton<IRootKeyStore, DbContextRootKeyStore>());
             Services.TryAddSingleton<IRootKeyProvider, WrappedRootKeyProvider>();
         }
     }

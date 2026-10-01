@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -109,7 +110,7 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
                         continue;
 
                     if (TryReEncrypt(table, column, value) is { } reEncryptedValue)
-                        pending.Add(new Update(table, column, keys, value, reEncryptedValue));
+                        pending.Add(new Update(table, column.Name, column.Name, keys, value, reEncryptedValue));
                     else
                         invalid++;
 
@@ -130,6 +131,90 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
         activity?.SetTag("reencrypted", reEncrypted).SetTag("skipped", skipped).SetTag("invalid", invalid);
 
         return new ReEncryptionResult(reEncrypted, skipped, invalid);
+    }
+
+    public async Task<long> RebuildBlindIndexesAsync(Type contextType, int batchSize, CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(batchSize, 1);
+
+        using var activity = Telemetry.StartActivity("blind_index.rebuild", contextType)?.SetTag("batch_size", batchSize);
+        await keyRing.InitializeAsync(contextType, cancellationToken);
+        await keyRing.LoadIndexKeysAsync(contextType, cancellationToken);
+
+        long rebuilt = 0;
+
+        await using var readerScope = scopeFactory.CreateAsyncScope();
+        await using var reader = OwnedContext.Create(readerScope.ServiceProvider, contextType);
+
+        await using var writerScope = scopeFactory.CreateAsyncScope();
+        await using var writer = OwnedContext.Create(writerScope.ServiceProvider, contextType);
+
+        foreach (var table in EncryptedTable.From(reader.Context, logger).Where(x => x.Columns.Any(c => c.Index != null)))
+        {
+            if (table.KeyColumns.Count == 0)
+            {
+                logger.LogWarning("{Table} has no primary key, its blind indexes can't be rebuilt", table.DisplayName);
+                continue;
+            }
+
+            var pending = new List<Update>(batchSize);
+
+            async ValueTask FlushAsync()
+            {
+                rebuilt += (await ExecuteAsync(writer.Context, pending, cancellationToken)).Updated;
+                pending.Clear();
+                logger.LogInformation("Rebuilt {Count} blind indexes so far, now in {Table}", rebuilt, table.DisplayName);
+            }
+
+            await ScanAsync(reader.Context, table, async (keys, values) =>
+            {
+                for (var i = 0; i < table.Columns.Count; i++)
+                {
+                    var column = table.Columns[i];
+
+                    if (column.Index is not { } index || values[i] is not { } value)
+                        continue;
+
+                    var hash = TryComputeIndex(table, column, value);
+
+                    if (hash == null || values[table.Columns.Count + i] is byte[] stored && stored.AsSpan().SequenceEqual(hash))
+                        continue;
+
+                    pending.Add(new Update(table, index.Column, column.Name, keys, value, hash));
+
+                    if (pending.Count >= batchSize)
+                        await FlushAsync();
+                }
+            }, cancellationToken);
+
+            if (pending.Count > 0)
+                await FlushAsync();
+        }
+
+        activity?.SetTag("rebuilt", rebuilt);
+        return rebuilt;
+    }
+
+    private byte[]? TryComputeIndex(EncryptedTable table, EncryptedColumn column, object value)
+    {
+        try
+        {
+            var plaintext = column.Converter.Encryptor.Decrypt(column.Converter.ToEnvelope(value));
+
+            try
+            {
+                return column.Index!.Indexer.ComputeFromPlaintext(plaintext, ((ValueConverter)column.Converter).ProviderClrType == typeof(string));
+            }
+            finally
+            {
+                Array.Clear(plaintext);
+            }
+        }
+        catch (Exception ex) when (ex is EntityFrameworkEncryptionException or FormatException or InvalidCastException)
+        {
+            logger.LogDebug(ex, "Value of {Table}.{Column} can't be decrypted, its blind index is left as is", table.DisplayName, column.Name);
+            return null;
+        }
     }
 
     private object? TryReEncrypt(EncryptedTable table, EncryptedColumn column, object value)
@@ -171,7 +256,10 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
         DbContext context, EncryptedTable table, Func<object[], object?[], ValueTask> onRow, CancellationToken cancellationToken)
     {
         var sql = context.GetService<ISqlGenerationHelper>();
-        var columns = table.KeyColumns.Concat(table.Columns.Select(x => x.Name)).Select(x => sql.DelimitIdentifier(x));
+        // keys, encrypted values, then blind indexes (NULL for columns without one)
+        var columns = table.KeyColumns.Select(x => sql.DelimitIdentifier(x))
+            .Concat(table.Columns.Select(x => sql.DelimitIdentifier(x.Name)))
+            .Concat(table.Columns.Select(x => x.Index is { } index ? sql.DelimitIdentifier(index.Column) : "NULL"));
         var notNull = table.Columns.Select(x => $"{sql.DelimitIdentifier(x.Name)} IS NOT NULL");
 
         await context.Database.OpenConnectionAsync(cancellationToken);
@@ -188,7 +276,7 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
             while (await reader.ReadAsync(cancellationToken))
             {
                 var keys = new object[table.KeyColumns.Count];
-                var values = new object?[table.Columns.Count];
+                var values = new object?[table.Columns.Count * 2];
 
                 for (var i = 0; i < keys.Length; i++)
                     keys[i] = reader.GetValue(i);
@@ -251,11 +339,24 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
             return (updated, updates.Count - updated);
         }, cancellationToken);
 
-    private sealed record EncryptedColumn(string Name, IEncryptionConverter Converter);
+    private sealed record EncryptedColumn(string Name, IEncryptionConverter Converter, BlindIndexColumn? Index);
+
+    private sealed record BlindIndexColumn(string Column, BlindIndexer Indexer);
 
     private sealed record EncryptedTable(string Name, string? Schema, IReadOnlyList<string> KeyColumns, IReadOnlyList<EncryptedColumn> Columns)
     {
         public string DisplayName => Schema == null ? Name : $"{Schema}.{Name}";
+
+        private static BlindIndexColumn? FindBlindIndex(ITable table, IColumn column)
+        {
+            var store = StoreObjectIdentifier.Table(table.Name, table.Schema);
+
+            return column.PropertyMappings
+                .Select(x => BlindIndex.Find(x.Property))
+                .FirstOrDefault(x => x != null) is { } index
+                ? new BlindIndexColumn(index.GetColumnName(store)!, ((IBlindIndexConverter)index.GetValueConverter()!).Indexer)
+                : null;
+        }
 
         public static IEnumerable<EncryptedTable> From(DbContext context, ILogger logger)
         {
@@ -284,7 +385,7 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
                             $"Column {table.Name}.{column.Name} is mapped to encrypted properties with different labels");
 
                     if (converters.Count == 1)
-                        columns.Add(new EncryptedColumn(column.Name, converters[0]));
+                        columns.Add(new EncryptedColumn(column.Name, converters[0], FindBlindIndex(table, column)));
                 }
 
                 if (columns.Count > 0)
@@ -298,18 +399,20 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
     }
 
     /// <summary>
-    /// Replaces a value only if it is still the one that was read: values written concurrently by the application
-    /// are already encrypted with the active key and are left as is.
+    /// Sets a column only if the encrypted value is still the one that was read: values written concurrently by the
+    /// application are already encrypted with the active key, and their blind index is set as well, so they are left as is.
     /// </summary>
-    private sealed record Update(EncryptedTable Table, EncryptedColumn Column, object[] Keys, object OldValue, object NewValue)
+    /// <param name="Column">Column to set: the encrypted value itself, or its blind index.</param>
+    /// <param name="CheckedColumn">Encrypted column that must still contain <paramref name="OldValue"/>.</param>
+    private sealed record Update(EncryptedTable Table, string Column, string CheckedColumn, object[] Keys, object OldValue, object NewValue)
     {
         public string ToSql(ISqlGenerationHelper sql)
         {
-            var column = sql.DelimitIdentifier(Column.Name);
             var keys = Table.KeyColumns.Select((x, i) => $"{sql.DelimitIdentifier(x)} = {sql.GenerateParameterNamePlaceholder($"k{i}")}");
 
-            return $"UPDATE {sql.DelimitIdentifier(Table.Name, Table.Schema)} SET {column} = {sql.GenerateParameterNamePlaceholder("new_value")} " +
-                   $"WHERE {string.Join(" AND ", keys)} AND {column} = {sql.GenerateParameterNamePlaceholder("old_value")}";
+            return $"UPDATE {sql.DelimitIdentifier(Table.Name, Table.Schema)} " +
+                   $"SET {sql.DelimitIdentifier(Column)} = {sql.GenerateParameterNamePlaceholder("new_value")} " +
+                   $"WHERE {string.Join(" AND ", keys)} AND {sql.DelimitIdentifier(CheckedColumn)} = {sql.GenerateParameterNamePlaceholder("old_value")}";
         }
 
         public void AddParameters(DbParameterCollection parameters, Func<DbParameter> create, ISqlGenerationHelper sql)

@@ -17,6 +17,8 @@ namespace EntityFrameworkCore.Encrypted.Common.Keys;
 internal sealed class DataKeyRing(IRootKeyProvider rootKeyProvider, EncryptionSettings settings, ILogger<DataKeyRing> logger) : IDisposable
 {
     private readonly ConcurrentDictionary<Type, Lazy<Task<ContextKeys>>> _contexts = new();
+    private readonly ConcurrentDictionary<Type, Lazy<Task<IndexKeys>>> _indexKeys = new();
+    private readonly ConcurrentDictionary<Type, bool> _usesBlindIndexes = new();
     private readonly ConcurrentBag<Action> _onDispose = [];
 
     public async Task InitializeAsync(Type contextType, CancellationToken cancellationToken)
@@ -33,13 +35,75 @@ internal sealed class DataKeyRing(IRootKeyProvider rootKeyProvider, EncryptionSe
         }
     }
 
-    /// <summary>Loads the keys of a context if not loaded yet; failed loads are retried.</summary>
+    /// <summary>
+    /// Loads the keys of a context if not loaded yet, and its blind index key if its model has blind indexes;
+    /// failed loads are retried.
+    /// </summary>
     /// <returns>Key that encrypts new values.</returns>
     public async Task<KeyId> LoadAsync(Type contextType, CancellationToken cancellationToken)
     {
         var keys = await GetOrStartLoad(contextType).WaitAsync(cancellationToken);
+
+        if (_usesBlindIndexes.ContainsKey(contextType))
+            await LoadIndexKeysAsync(contextType, cancellationToken);
+
         return new KeyId(keys.ActiveRootKeyId, settings.DataKeyVersion);
     }
+
+    /// <summary>Called when a model with blind indexes is built, so the blind index key is loaded on startup too.</summary>
+    public void UseBlindIndexes(Type contextType)
+        => _usesBlindIndexes.TryAdd(contextType, true);
+
+    public async Task LoadIndexKeysAsync(Type contextType, CancellationToken cancellationToken)
+        => await GetOrStartIndexLoad(contextType).WaitAsync(cancellationToken);
+
+    /// <summary>HMAC key of a blind indexed column, derived from the blind index key of the context.</summary>
+    public byte[] GetIndexKey(Type contextType, string label)
+    {
+        var load = GetOrStartIndexLoad(contextType);
+
+        if (!load.IsCompletedSuccessfully)
+            logger.LogWarning(
+                "Blind index key of {Context} was not loaded on startup and is being loaded synchronously on first use. " +
+                "Run the app with a generic host or call InitializeEncryptionAsync() to load keys eagerly",
+                contextType.Name);
+
+        return load.GetAwaiter().GetResult().Get(label);
+    }
+
+    private Task<IndexKeys> GetOrStartIndexLoad(Type contextType)
+    {
+        var lazy = _indexKeys.GetOrAdd(contextType, CreateIndexLoad);
+
+        if (lazy.Value is { IsFaulted: false, IsCanceled: false })
+            return lazy.Value;
+
+        _indexKeys.TryUpdate(contextType, CreateIndexLoad(contextType), lazy);
+        return _indexKeys[contextType].Value;
+    }
+
+    private Lazy<Task<IndexKeys>> CreateIndexLoad(Type contextType)
+        => new(() => Task.Run(async () =>
+        {
+            using var activity = Telemetry.StartActivity("index_key.load", contextType);
+
+            try
+            {
+                var key = await rootKeyProvider.GetIndexKeyAsync(contextType, CancellationToken.None);
+
+                if (key is not { Length: Envelope.KeySize })
+                    throw new EntityFrameworkEncryptionException(
+                        $"Blind index key of {contextType.Name} must be {Envelope.KeySize} bytes, but was {key?.Length ?? 0}");
+
+                logger.LogInformation("Blind index key of {Context} loaded", contextType.Name);
+                return new IndexKeys((byte[])key.Clone());
+            }
+            catch (Exception ex)
+            {
+                activity.SetError(ex);
+                throw;
+            }
+        }));
 
     public (KeyId KeyId, DataKey Key) GetEncryptionKey(Type contextType)
     {
@@ -143,7 +207,14 @@ internal sealed class DataKeyRing(IRootKeyProvider rootKeyProvider, EncryptionSe
                 load.Value.Result.Clear();
         }
 
+        foreach (var load in _indexKeys.Values)
+        {
+            if (load is { IsValueCreated: true, Value.IsCompletedSuccessfully: true })
+                load.Value.Result.Clear();
+        }
+
         _contexts.Clear();
+        _indexKeys.Clear();
     }
 
     private ContextKeys GetContextKeys(Type contextType)
@@ -199,6 +270,27 @@ internal sealed class DataKeyRing(IRootKeyProvider rootKeyProvider, EncryptionSe
             activity.SetError(ex);
             Telemetry.RecordRootKeyLoad(contextType, trigger, ex);
             throw;
+        }
+    }
+
+    /// <summary>Blind index key of a context and the HMAC keys of its columns derived from it.</summary>
+    private sealed class IndexKeys(byte[] key)
+    {
+        private readonly ConcurrentDictionary<string, byte[]> _columnKeys = new();
+
+        // per column: equal values in different columns have different blind indexes
+        public byte[] Get(string label)
+            => _columnKeys.GetOrAdd(label, static (x, key) => HKDF.DeriveKey(
+                HashAlgorithmName.SHA256, key, Envelope.KeySize, info: Encoding.UTF8.GetBytes($"efenc:bidx:{x}")), key);
+
+        public void Clear()
+        {
+            CryptographicOperations.ZeroMemory(key);
+
+            foreach (var columnKey in _columnKeys.Values)
+                CryptographicOperations.ZeroMemory(columnKey);
+
+            _columnKeys.Clear();
         }
     }
 

@@ -35,6 +35,8 @@ You'd usually call them from an admin endpoint, a background job or a small one-
 | switch to another KMS key | configure the new key, then call `RewrapRootKeysAsync` |
 | rotate the KMS key material | turn on automatic rotation in KMS; nothing to do in the app |
 
+None of these affect [blind indexes](blind-indexes#keys-and-rotation): lookups keep working throughout.
+
 ## Rotating the root key
 
 If you use a key management service, creating a new root key is a single call:

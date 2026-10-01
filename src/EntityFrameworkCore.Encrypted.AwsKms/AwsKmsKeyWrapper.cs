@@ -66,7 +66,8 @@ internal sealed class AwsKmsKeyWrapper(IAmazonKeyManagementService kms, AwsKmsOp
     private Dictionary<string, string> CreateEncryptionContext(int rootKeyId)
         => new(options.EncryptionContext)
         {
-            [ReservedContextPrefix + "purpose"] = "root-key",
+            // root key id 0 is the blind index key of the context
+            [ReservedContextPrefix + "purpose"] = rootKeyId == 0 ? "index-key" : "root-key",
             [ReservedContextPrefix + "root-key-id"] = rootKeyId.ToString(CultureInfo.InvariantCulture)
         };
 }

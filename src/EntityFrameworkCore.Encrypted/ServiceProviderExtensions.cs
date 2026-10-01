@@ -2,6 +2,7 @@ using EntityFrameworkCore.Encrypted.Common;
 using EntityFrameworkCore.Encrypted.Common.Exceptions;
 using EntityFrameworkCore.Encrypted.Common.Keys;
 using EntityFrameworkCore.Encrypted.Common.Maintenance;
+using EntityFrameworkCore.Encrypted.Common.Storage;
 using EntityFrameworkCore.Encrypted.Keys;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -19,8 +20,25 @@ public static class ServiceProviderExtensions
         await using var scope = serviceProvider.CreateAsyncScope();
 
         foreach (var (contextType, keyRing) in EncryptedContexts.Find(scope.ServiceProvider))
+        {
+            // building the model registers blind indexes, so their key is loaded now rather than on first use
+            await using (var owned = OwnedContext.Create(scope.ServiceProvider, contextType))
+                _ = owned.Context.Model;
+
             await keyRing.InitializeAsync(contextType, cancellationToken);
+        }
     }
+
+    /// <summary>
+    /// Recomputes the blind indexes of <typeparamref name="TContext"/> from the stored values, <paramref name="batchSize"/>
+    /// values per transaction: after adding a blind index to a column with existing values, or changing its normalization.
+    /// Safe to run while the application is running and to restart: values changed concurrently are left as is.
+    /// </summary>
+    /// <returns>Number of updated blind indexes.</returns>
+    public static Task<long> RebuildBlindIndexesAsync<TContext>(
+        this IServiceProvider serviceProvider, int batchSize = 1000, CancellationToken cancellationToken = default)
+        where TContext : DbContext
+        => GetService<EncryptedDataMaintenance>(serviceProvider).RebuildBlindIndexesAsync(typeof(TContext), batchSize, cancellationToken);
 
     /// <summary>
     /// Creates a new root key of <typeparamref name="TContext"/> that encrypts new values from now on.

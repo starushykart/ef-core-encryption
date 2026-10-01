@@ -41,14 +41,33 @@ internal sealed partial class EncryptionConvention(DataKeyRing? keyRing, Type co
             return;
         }
 
-        foreach (var entityType in modelBuilder.Metadata.GetEntityTypes())
+        foreach (var entityType in modelBuilder.Metadata.GetEntityTypes().ToList())
         {
-            foreach (var property in GetDeclaredProperties(entityType).Where(IsEncrypted))
-                Encrypt(property);
+            foreach (var property in GetDeclaredProperties(entityType).ToList())
+            {
+                // a delegate can't be written to migration snapshots: it's only kept in the blind index converter
+                var normalize = property.FindAnnotation(PropertyAnnotations.BlindIndexNormalize)?.Value as Func<string, string>;
+                property.RemoveAnnotation(PropertyAnnotations.BlindIndexNormalize);
+
+                if (!IsEncrypted(property))
+                {
+                    if (HasBlindIndex(property))
+                        throw new EntityFrameworkEncryptionException(
+                            $"{DisplayName(property)} has a blind index but isn't encrypted. Mark it with [Encrypted] or IsEncrypted()");
+
+                    continue;
+                }
+
+                var conversion = Encrypt(property);
+
+                if (HasBlindIndex(property))
+                    AddBlindIndex(property, conversion, normalize);
+            }
         }
     }
 
-    private void Encrypt(IConventionProperty property)
+    /// <returns>The configured conversion that runs before encryption, if any.</returns>
+    private ValueConverter? Encrypt(IConventionProperty property)
     {
         var name = DisplayName(property);
 
@@ -72,6 +91,52 @@ internal sealed partial class EncryptionConvention(DataKeyRing? keyRing, Type co
         // with a converter EF compares arrays by reference: changes made inside an array wouldn't be saved
         if (property.ClrType == typeof(byte[]) && property.GetValueComparer() == null)
             property.SetValueComparer(new ArrayStructuralComparer<byte>());
+
+        return conversion;
+    }
+
+    /// <summary>
+    /// Shadow <c>{Property}_Index</c> property holding the same value, hashed by its converter: filled on save by
+    /// <see cref="BlindIndexSaveChangesInterceptor"/>, compared instead of the encrypted column by <see cref="EncryptedQueryGuard"/>.
+    /// </summary>
+    private void AddBlindIndex(IConventionProperty property, ValueConverter? conversion, Func<string, string>? normalize)
+    {
+        // already encrypted (the model is finalized again): the blind index was added then
+        if (conversion is IEncryptionConverter)
+            return;
+
+        var name = DisplayName(property);
+
+        if (property.DeclaringType is not IConventionEntityType entityType)
+            throw new EntityFrameworkEncryptionException(
+                $"{name}: blind indexes aren't supported on properties of complex types");
+
+        var providerType = conversion?.ProviderClrType ?? property.ClrType;
+
+        if (normalize != null && providerType != typeof(string))
+            throw new EntityFrameworkEncryptionException($"{name}: blind index normalization is only supported for values stored as strings");
+
+        var indexName = BlindIndex.PropertyName(property.Name);
+
+        if (entityType.FindProperty(indexName) is { } existing && existing.GetValueConverter() is not IBlindIndexConverter)
+            throw new EntityFrameworkEncryptionException(
+                $"{name} has a blind index, but {entityType.DisplayName()} already has a property named {indexName}");
+
+        var indexer = new BlindIndexer(keyRing, contextType, GetLabel(property), normalize);
+        var modelType = conversion?.ModelClrType ?? property.ClrType;
+        var converter = (ValueConverter)Activator.CreateInstance(
+            typeof(BlindIndexConverter<>).MakeGenericType(modelType), indexer, conversion, property.Name)!;
+
+        var index = entityType.Builder.Property(property.ClrType, indexName, fromDataAnnotation: true)!;
+        index.IsRequired(false, fromDataAnnotation: true);
+        index.HasConversion(converter, fromDataAnnotation: true);
+        index.HasMaxLength(BlindIndexer.Size, fromDataAnnotation: true);
+
+        if (property.GetValueComparer() is { } comparer)
+            index.HasValueComparer(comparer, fromDataAnnotation: true);
+
+        entityType.Builder.HasIndex([index.Metadata], fromDataAnnotation: true);
+        keyRing?.UseBlindIndexes(contextType);
     }
 
     // HasConversion<string>() only sets the provider type; the converter is otherwise chosen by the type mapping
@@ -106,6 +171,10 @@ internal sealed partial class EncryptionConvention(DataKeyRing? keyRing, Type co
     private static bool IsEncrypted(IConventionProperty property)
         => property.FindAnnotation(PropertyAnnotations.IsEncrypted)?.Value is true
            || property.PropertyInfo?.GetCustomAttribute<EncryptedAttribute>(false) != null;
+
+    private static bool HasBlindIndex(IConventionProperty property)
+        => property.FindAnnotation(PropertyAnnotations.BlindIndex)?.Value is true
+           || property.PropertyInfo?.GetCustomAttribute<BlindIndexAttribute>(false) != null;
 
     private static string GetLabel(IConventionProperty property)
     {

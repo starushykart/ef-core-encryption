@@ -1,15 +1,18 @@
 using System.Linq.Expressions;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using EntityFrameworkCore.Encrypted.Common.Exceptions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Query;
 
 namespace EntityFrameworkCore.Encrypted.Common.Plugin;
 
 /// <summary>
 /// Rejects queries the database would evaluate on ciphertext: values are encrypted with a random nonce, so comparing,
-/// searching, sorting or grouping encrypted columns silently returns wrong results. Only null checks are allowed.
+/// searching, sorting or grouping encrypted columns silently returns wrong results. Only null checks are allowed,
+/// and equality with values for properties with a blind index, which are rewritten to compare the blind index.
 /// </summary>
 /// <remarks>Runs once per query shape: compiled queries are cached by EF.</remarks>
 internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
@@ -23,9 +26,13 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
 
         var properties = Cache.GetValue(context.Model, EncryptedProperties.Create);
 
-        if (!properties.IsEmpty)
-            new Visitor(properties).Visit(queryExpression);
+        if (properties.IsEmpty)
+            return queryExpression;
 
+        if (properties.HasBlindIndexes)
+            queryExpression = new BlindIndexRewriter(properties).Visit(queryExpression);
+
+        new Visitor(properties).Visit(queryExpression);
         return queryExpression;
     }
 
@@ -39,6 +46,8 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
         private readonly Dictionary<Type, List<IReadOnlyTypeBase>> _types = [];
 
         public bool IsEmpty { get; private set; } = true;
+
+        public bool HasBlindIndexes { get; private set; }
 
         public static EncryptedProperties Create(IModel model)
         {
@@ -57,6 +66,7 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
 
             types.Add(type);
             IsEmpty &= !type.GetDeclaredProperties().Any(IsEncrypted);
+            HasBlindIndexes |= type.GetDeclaredProperties().Any(x => x.GetValueConverter() is IBlindIndexConverter);
 
             foreach (var complexProperty in type.GetDeclaredComplexProperties())
                 Add(complexProperty.ComplexType);
@@ -106,6 +116,110 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
 
         private static bool IsEncrypted(IReadOnlyProperty property)
             => property.GetValueConverter() is IEncryptionConverter;
+    }
+
+    /// <summary>
+    /// Compares the blind index instead of the encrypted value: <c>x.Email == email</c> becomes
+    /// <c>EF.Property(x, "Email_Index") == email</c>, and EF hashes the parameter with the converter of the index.
+    /// Only comparisons with parameters and constants: the hash of another column can't be computed in the database.
+    /// </summary>
+    private sealed class BlindIndexRewriter(EncryptedProperties properties) : ExpressionVisitor
+    {
+        private static readonly MethodInfo PropertyMethod = typeof(EF).GetMethod(nameof(EF.Property))!;
+
+        protected override Expression VisitBinary(BinaryExpression node)
+        {
+            if (node.NodeType is ExpressionType.Equal or ExpressionType.NotEqual)
+            {
+                if (IsValue(node.Right) && ToIndex(node.Left) is { } left)
+                    return node.Update(left, node.Conversion, Visit(node.Right));
+
+                if (IsValue(node.Left) && ToIndex(node.Right) is { } right)
+                    return node.Update(Visit(node.Left), node.Conversion, right);
+            }
+
+            return base.VisitBinary(node);
+        }
+
+        protected override Expression VisitMethodCall(MethodCallExpression node)
+        {
+            // values.Contains(x.Email), Enumerable.Contains(values, x.Email)
+            if (node.Method.Name == nameof(Enumerable.Contains))
+            {
+                if (node.Object != null && node.Arguments.Count == 1 && IsValue(node.Object) && ToIndex(node.Arguments[0]) is { } item)
+                    return node.Update(node.Object, [item]);
+
+                if (node.Object == null && node.Arguments.Count == 2
+                    && node.Method.DeclaringType == typeof(Enumerable)
+                    && IsValue(node.Arguments[0]) && ToIndex(node.Arguments[1]) is { } argument)
+                    return node.Update(null, [node.Arguments[0], argument]);
+            }
+
+            if (node.Method.Name == nameof(EntityFrameworkQueryableExtensions.ExecuteUpdate)
+                && node.Method.DeclaringType == typeof(EntityFrameworkQueryableExtensions)
+                && node.Arguments is [var source, NewArrayExpression setters])
+            {
+                return node.Update(null, [Visit(source), setters.Update(setters.Expressions.SelectMany(AddIndexSetter))]);
+            }
+
+            return base.VisitMethodCall(node);
+        }
+
+        // SetProperty(x => x.Email, value) also sets the blind index to the same value
+        private IEnumerable<Expression> AddIndexSetter(Expression setter)
+        {
+            yield return setter;
+
+            if (setter is not NewExpression { Arguments: [LambdaExpression selector, var value] } tuple
+                || ToIndex(selector.Body) is not { } index)
+                yield break;
+
+            if (!IsValue(value))
+                throw new EntityFrameworkEncryptionException(
+                    $"{EncryptionConvention.DisplayName(Find(selector.Body)!)} has a blind index and can only be set to a value in ExecuteUpdate, " +
+                    "not to an expression: its hash can't be computed in the database");
+
+            yield return tuple.Update([Expression.Lambda(selector.Type, index, selector.Parameters), value]);
+        }
+
+        /// <summary>Same access to the blind index shadow property, or <c>null</c> if the expression isn't a property with one.</summary>
+        private Expression? ToIndex(Expression expression)
+        {
+            switch (expression)
+            {
+                case UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } convert:
+                    return ToIndex(convert.Operand) is { } operand ? convert.Update(operand) : null;
+
+                case MemberExpression { Expression: { } instance } member
+                    when Find(member) is { } property && BlindIndex.Find(property) is { } index:
+                    return Expression.Call(PropertyMethod.MakeGenericMethod(member.Type), Visit(instance), Expression.Constant(index.Name));
+
+                case MethodCallExpression { Arguments: [var instance, ConstantExpression { Value: string }] } call
+                    when call.Method.DeclaringType == typeof(EF) && call.Method.Name == nameof(EF.Property)
+                         && Find(call) is { } property && BlindIndex.Find(property) is { } index:
+                    return call.Update(null, [Visit(instance), Expression.Constant(index.Name)]);
+
+                default:
+                    return null;
+            }
+        }
+
+        private IReadOnlyProperty? Find(Expression expression)
+            => expression switch
+            {
+                MemberExpression { Expression: { } instance } member => properties.Find(instance, member.Member.Name),
+                MethodCallExpression { Arguments: [var instance, ConstantExpression { Value: string name }] } => properties.Find(instance, name),
+                _ => null
+            };
+
+        // query parameters and constants: hashed by EF with the converter of the index; null checks stay on the column
+        private static bool IsValue(Expression expression)
+        {
+            while (expression is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } unary)
+                expression = unary.Operand;
+
+            return expression is QueryParameterExpression or ConstantExpression { Value: not null and not IQueryable };
+        }
     }
 
     private sealed class Visitor(EncryptedProperties properties) : ExpressionVisitor
