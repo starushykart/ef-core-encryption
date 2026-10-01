@@ -86,6 +86,24 @@ public class EncryptionConventionTests
         act.Should().Throw<EntityFrameworkEncryptionException>().WithMessage("Address.Street is encrypted*");
     }
 
+    [Fact]
+    public void Should_distinguish_occurrences_of_the_same_type_in_queries()
+    {
+        using var provider = BuildProvider<OrderContext>();
+        using var scope = provider.CreateScope();
+        var orders = scope.ServiceProvider.GetRequiredService<OrderContext>().Set<Order>();
+
+        var billing = () => orders.Where(x => x.Billing.Text == "a").ToQueryString();
+        var shipping = () => orders.Where(x => x.Shipping.Text == "a").ToQueryString();
+        var ownedEncrypted = () => orders.Where(x => x.Sender.Text == "a").ToQueryString();
+        var ownedPlain = () => orders.Where(x => x.Receiver.Text == "a").ToQueryString();
+
+        billing.Should().Throw<EntityFrameworkEncryptionException>().WithMessage("Line.Text is encrypted*");
+        shipping.Should().NotThrow();
+        ownedEncrypted.Should().Throw<EntityFrameworkEncryptionException>();
+        ownedPlain.Should().NotThrow();
+    }
+
     private static object? RoundTrip(IReadOnlyProperty property, object value)
     {
         var converter = property.GetValueConverter();
@@ -124,6 +142,32 @@ public class EncryptionConventionTests
                 e.Property(x => x.Code).HasConversion(v => v.ToUpperInvariant(), v => v).IsEncrypted();
                 e.Ignore(x => x.Number);
             });
+    }
+
+    public class OrderContext(DbContextOptions<OrderContext> options) : DbContext(options)
+    {
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+            => modelBuilder.Entity<Order>(e =>
+            {
+                e.ComplexProperty(x => x.Billing, x => x.Property(l => l.Text).IsEncrypted());
+                e.ComplexProperty(x => x.Shipping);
+                e.OwnsOne(x => x.Sender, x => x.Property(l => l.Text).IsEncrypted());
+                e.OwnsOne(x => x.Receiver);
+            });
+    }
+
+    public class Order
+    {
+        public int Id { get; set; }
+        public Line Billing { get; set; } = new();
+        public Line Shipping { get; set; } = new();
+        public Line Sender { get; set; } = new();
+        public Line Receiver { get; set; } = new();
+    }
+
+    public class Line
+    {
+        public string Text { get; set; } = "";
     }
 
     public class SizedColumnContext(DbContextOptions<SizedColumnContext> options) : CustomerContextBase(options)

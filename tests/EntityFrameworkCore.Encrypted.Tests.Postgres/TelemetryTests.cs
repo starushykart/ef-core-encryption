@@ -77,6 +77,32 @@ public sealed class TelemetryTests : IDisposable
         Sum("efcore.encryption.decryption.failures", "error.type", "invalid_format").Should().Be(1);
     }
 
+    [Theory]
+    [InlineData("not base64!")]
+    [InlineData("AAEC")]
+    public async Task Should_count_values_that_are_not_encrypted_as_invalid_format(string stored)
+    {
+        await using var provider = Build();
+        var converter = GetConverter(provider);
+
+        var act = () => converter.ConvertFromProvider(stored);
+
+        act.Should().Throw<Exception>();
+        Sum("efcore.encryption.decryption.failures", "error.type", "invalid_format").Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Should_count_short_binary_values_as_invalid_format()
+    {
+        await using var provider = Build();
+        var converter = GetConverter(provider, nameof(TelemetryEntity.Blob));
+
+        var act = () => converter.ConvertFromProvider(new byte[] { 1, 2, 3 });
+
+        act.Should().Throw<EntityFrameworkEncryptionException>();
+        Sum("efcore.encryption.decryption.failures", "error.type", "invalid_format").Should().Be(1);
+    }
+
     [Fact]
     public async Task Should_trace_and_time_key_management_calls_and_key_loads()
     {
@@ -155,11 +181,11 @@ public sealed class TelemetryTests : IDisposable
             .AddDbContext<TelemetryDbContext>(x => x.UseNpgsql("Host=localhost").UseEncryption())
             .BuildServiceProvider();
 
-    private static ValueConverter GetConverter(IServiceProvider provider)
+    private static ValueConverter GetConverter(IServiceProvider provider, string property = nameof(TelemetryEntity.Secret))
     {
         using var scope = provider.CreateScope();
         return scope.ServiceProvider.GetRequiredService<TelemetryDbContext>().Model
-            .FindEntityType(typeof(TelemetryEntity))!.FindProperty(nameof(TelemetryEntity.Secret))!.GetValueConverter()!;
+            .FindEntityType(typeof(TelemetryEntity))!.FindProperty(property)!.GetValueConverter()!;
     }
 
     public sealed class TelemetryDbContext(DbContextOptions<TelemetryDbContext> options) : DbContext(options)
@@ -173,5 +199,8 @@ public sealed class TelemetryTests : IDisposable
 
         [Encrypted]
         public string? Secret { get; set; }
+
+        [Encrypted]
+        public byte[]? Blob { get; set; }
     }
 }

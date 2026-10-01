@@ -97,10 +97,13 @@ internal sealed class StringEncryptionConverter(FieldEncryptor encryptor)
         try
         {
             if (!Convert.TryFromBase64String(value, buffer[..maxEnvelopeLength], out var envelopeLength))
+            {
+                encryptor.RecordInvalidFormat();
                 throw new FormatException("Encrypted value is not valid Base64");
+            }
 
             var envelope = buffer[..envelopeLength];
-            plaintext = buffer.Slice(maxEnvelopeLength, Envelope.GetPlaintextLength(envelopeLength));
+            plaintext = buffer.Slice(maxEnvelopeLength, encryptor.GetPlaintextLength(envelopeLength));
 
             encryptor.Decrypt(envelope, plaintext);
             return Encoding.UTF8.GetString(plaintext);

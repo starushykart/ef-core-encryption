@@ -44,7 +44,7 @@ internal sealed class FieldEncryptor(DataKeyRing? keyRing, Type contextType, str
         }
         catch (EntityFrameworkEncryptionException)
         {
-            Telemetry.RecordDecryptionFailure(_contextName, "invalid_format");
+            RecordInvalidFormat();
             throw;
         }
 
@@ -72,9 +72,27 @@ internal sealed class FieldEncryptor(DataKeyRing? keyRing, Type contextType, str
         Telemetry.RecordValue(_contextName, Telemetry.Operations.Decrypt);
     }
 
+    /// <inheritdoc cref="Envelope.GetPlaintextLength"/>
+    public int GetPlaintextLength(int envelopeLength)
+    {
+        try
+        {
+            return Envelope.GetPlaintextLength(envelopeLength);
+        }
+        catch (EntityFrameworkEncryptionException)
+        {
+            RecordInvalidFormat();
+            throw;
+        }
+    }
+
+    /// <summary>Counts a stored value that isn't an encrypted value, e.g. invalid Base64 or plaintext.</summary>
+    public void RecordInvalidFormat()
+        => Telemetry.RecordDecryptionFailure(_contextName, "invalid_format");
+
     public byte[] Decrypt(ReadOnlySpan<byte> envelope)
     {
-        var plaintext = new byte[Envelope.GetPlaintextLength(envelope.Length)];
+        var plaintext = new byte[GetPlaintextLength(envelope.Length)];
         Decrypt(envelope, plaintext);
         return plaintext;
     }
