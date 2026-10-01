@@ -44,6 +44,33 @@ public class KeyRobustnessTests
     }
 
     [Fact]
+    public async Task Should_wrap_blind_index_key_with_a_key_derived_from_the_static_key()
+    {
+        var staticKey = RandomNumberGenerator.GetBytes(32);
+        var store = new InMemoryRootKeyStore();
+
+        await using var provider = DocumentDbContext.BuildProvider(x => x.UseKey(staticKey).UseRootKeyStore(_ => store));
+        var keyRing = provider.GetRequiredService<DataKeyRing>();
+        await keyRing.LoadIndexKeysAsync(typeof(DocumentDbContext), CancellationToken.None);
+
+        var stored = store.Keys(typeof(DocumentDbContext)).Should().ContainSingle().Which;
+        var unwrapWithStaticKey = () => Unwrap(staticKey, stored.WrappedKey);
+        var indexKey = Unwrap(HKDF.DeriveKey(HashAlgorithmName.SHA256, staticKey, 32, info: "efenc:wrap:index-key"u8.ToArray()), stored.WrappedKey);
+
+        unwrapWithStaticKey.Should().Throw<AuthenticationTagMismatchException>("the static key only derives keys");
+        keyRing.GetIndexKey(typeof(DocumentDbContext), "Documents.Text")
+            .Should().Equal(HKDF.DeriveKey(HashAlgorithmName.SHA256, indexKey, 32, info: "efenc:bidx:Documents.Text"u8.ToArray()));
+    }
+
+    private static byte[] Unwrap(byte[] key, byte[] wrapped)
+    {
+        var plaintext = new byte[wrapped.Length - 28];
+        using var aes = new AesGcm(key, 16);
+        aes.Decrypt(wrapped.AsSpan(0, 12), wrapped.AsSpan(12, plaintext.Length), wrapped.AsSpan(12 + plaintext.Length), plaintext, "efenc:index-key"u8);
+        return plaintext;
+    }
+
+    [Fact]
     public async Task Should_use_blind_index_key_when_it_can_not_be_rewrapped()
     {
         var oldKey = RandomNumberGenerator.GetBytes(32);

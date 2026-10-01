@@ -133,7 +133,7 @@ The `efcore.encryption.legacy.values` metric counts values read through the lega
 
 Every value in the library's format starts with a small header: a format byte, the key id and the data key version. A value counts as the library's format only if that header is there, with a root key id of at least 1 and a data key version you've configured. If its data key version is newer (a newer deployment rolling out), the library tries to decrypt it first and only asks your decryptor if that fails. Everything else is passed to your decryptor. Old ciphertext has random bytes in those positions, so it's mistaken for the library's format about once in 2⁴⁰ values.
 
-One rule stays strict: a value in the library's format that fails to decrypt is never handed to the legacy decryptor. Tampering is still reported as tampering. The plaintext decryptor doesn't turn a modified ciphertext into "plaintext".
+One rule stays strict: a value in the library's format with a configured data key version that fails to decrypt is never handed to the legacy decryptor, so tampering is still reported as tampering. The plaintext decryptor can't tell a value with a damaged header from plaintext, though, and returns it as stored. Remove it as soon as the migration is done.
 
 ## Things to keep in mind
 

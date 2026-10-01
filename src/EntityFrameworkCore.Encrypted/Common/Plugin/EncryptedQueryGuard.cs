@@ -25,7 +25,7 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
             return queryExpression;
 
         EncryptedModel.EnsureBuiltWithEncryption(context);
-        var properties = Cache.GetValue(context.Model, EncryptedProperties.Create);
+        var properties = Cache.GetValue(context.Model, CreateChecked);
 
         if (properties.IsEmpty)
             return queryExpression;
@@ -35,6 +35,23 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
 
         new Visitor(properties).Visit(queryExpression);
         return queryExpression;
+    }
+
+    // global query filters are added to queries after this interceptor runs: checked once per model instead
+    private static EncryptedProperties CreateChecked(IModel model)
+    {
+        var properties = EncryptedProperties.Create(model);
+
+        if (properties.IsEmpty)
+            return properties;
+
+        foreach (var filter in model.GetEntityTypes().SelectMany(x => x.GetDeclaredQueryFilters()))
+        {
+            if (filter.Expression is { } expression)
+                new Visitor(properties).Visit(expression);
+        }
+
+        return properties;
     }
 
     /// <summary>
@@ -144,6 +161,23 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
 
         protected override Expression VisitMethodCall(MethodCallExpression node)
         {
+            // x.Email.Equals(email), string.Equals(x.Email, email), Equals(email, x.Email): like ==; overloads with a
+            // StringComparison can't be compared on hashes and are left to the guard
+            if (node.Method.Name == nameof(Equals) && node.Method.ReturnType == typeof(bool)
+                && (node.Object, node.Arguments) switch
+                {
+                    ({ } instance, [var argument]) => (instance, argument),
+                    (null, [var first, var second]) => (first, second),
+                    _ => ((Expression, Expression)?)null
+                } is var (left, right))
+            {
+                if (IsValue(right) && ToIndex(StripConvert(left)) is { } leftIndex)
+                    return Expression.Equal(leftIndex, As(Visit(StripConvert(right)), leftIndex.Type));
+
+                if (IsValue(left) && ToIndex(StripConvert(right)) is { } rightIndex)
+                    return Expression.Equal(As(Visit(StripConvert(left)), rightIndex.Type), rightIndex);
+            }
+
             // values.Contains(x.Email), Enumerable.Contains(values, x.Email)
             if (node.Method.Name == nameof(Enumerable.Contains))
             {
@@ -218,6 +252,9 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
         private static bool IsValue(Expression expression)
             => StripConvert(expression) is QueryParameterExpression or ConstantExpression { Value: not null and not IQueryable };
 
+        private static Expression As(Expression expression, Type type)
+            => expression.Type == type ? expression : Expression.Convert(expression, type);
+
         private static bool IsNullValue(Expression expression)
             => StripConvert(expression) is ConstantExpression { Value: null } or DefaultExpression;
 
@@ -262,6 +299,8 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
             [nameof(Queryable.MaxBy)] = [1],
             [nameof(Queryable.Min)] = [1],
             [nameof(Queryable.Max)] = [1],
+            [nameof(Queryable.Sum)] = [1],
+            [nameof(Queryable.Average)] = [1],
             [nameof(Queryable.Join)] = [2, 3],
             [nameof(Queryable.GroupJoin)] = [2, 3]
         };
@@ -271,7 +310,17 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
         [
             nameof(Queryable.Distinct), nameof(Queryable.Min), nameof(Queryable.Max), nameof(Queryable.Contains),
             nameof(Queryable.Order), nameof(Queryable.OrderDescending), nameof(Queryable.Union),
-            nameof(Queryable.Intersect), nameof(Queryable.Except), nameof(Queryable.SequenceEqual)
+            nameof(Queryable.Intersect), nameof(Queryable.Except), nameof(Queryable.SequenceEqual),
+            nameof(Queryable.Sum), nameof(Queryable.Average)
+        ];
+
+        // lambda arguments the database evaluates as conditions: Where(x => x.EncryptedFlag)
+        private static readonly HashSet<string> Predicates =
+        [
+            nameof(Queryable.Where), nameof(Queryable.Count), nameof(Queryable.LongCount), nameof(Queryable.Any),
+            nameof(Queryable.All), nameof(Queryable.First), nameof(Queryable.FirstOrDefault), nameof(Queryable.Single),
+            nameof(Queryable.SingleOrDefault), nameof(Queryable.Last), nameof(Queryable.LastOrDefault),
+            nameof(Queryable.TakeWhile), nameof(Queryable.SkipWhile)
         ];
 
         // operators returning their source elements
@@ -319,8 +368,20 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
             {
                 Reject(node.Left, node.Right);
             }
+            // an encrypted bool as a condition: x.EncryptedFlag && x.Id > 1
+            else if (node.NodeType is ExpressionType.AndAlso or ExpressionType.OrElse)
+            {
+                RejectValue(node.Left);
+                RejectValue(node.Right);
+            }
 
             return base.VisitBinary(node);
+        }
+
+        protected override Expression VisitConditional(ConditionalExpression node)
+        {
+            RejectValue(node.Test);
+            return base.VisitConditional(node);
         }
 
         protected override Expression VisitMethodCall(MethodCallExpression node)
@@ -354,7 +415,18 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
             }
 
             if (IsSequenceOperator(node))
+            {
                 CheckSequenceOperator(node);
+
+                if (Predicates.Contains(node.Method.Name))
+                {
+                    foreach (var argument in node.Arguments.Skip(1))
+                    {
+                        if (StripQuote(argument) is LambdaExpression { Body.Type: var type } predicate && type == typeof(bool))
+                            RejectValue(predicate.Body);
+                    }
+                }
+            }
 
             if ((node.Method.DeclaringType == typeof(Queryable) || node.Method.DeclaringType == typeof(Enumerable))
                 && KeySelectors.TryGetValue(node.Method.Name, out var indexes))
@@ -378,10 +450,10 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
             return base.VisitMember(node);
         }
 
-        // x.Blob.Length
         protected override Expression VisitUnary(UnaryExpression node)
         {
-            if (node.NodeType == ExpressionType.ArrayLength)
+            // x.Blob.Length, !x.EncryptedFlag
+            if (node.NodeType is ExpressionType.ArrayLength or ExpressionType.Not)
                 RejectValue(node.Operand);
 
             return base.VisitUnary(node);
@@ -627,12 +699,19 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
 
                     return ElementShape(call.Arguments[0]);
 
-                case MethodCallExpression call when call.Method.DeclaringType == typeof(string) && call.Method.Name == nameof(string.Concat):
-                    return call.Arguments.Select(ShapeOf).OfType<EncryptedValue>().FirstOrDefault();
-
-                // computed in the database from the encrypted value: x.Secret ?? "", x.Secret + "", c ? x.Secret : x.Plain
-                case BinaryExpression binary when binary.NodeType is ExpressionType.Coalesce or ExpressionType.Add:
+                // computed in the database from the encrypted value: x.Secret ?? "", x.Secret + "", x.Amount * 2,
+                // c ? x.Secret : x.Plain; comparisons are rejected themselves
+                case BinaryExpression binary when !IsComparison(binary.NodeType):
                     return ShapeOf(binary.Left) as EncryptedValue ?? ShapeOf(binary.Right) as EncryptedValue;
+
+                case UnaryExpression { NodeType: ExpressionType.Negate or ExpressionType.NegateChecked or ExpressionType.UnaryPlus
+                    or ExpressionType.Not or ExpressionType.OnesComplement } unary:
+                    return ShapeOf(unary.Operand) as EncryptedValue;
+
+                // Math.Abs(x.Amount), x.Amount.ToString(): evaluated on ciphertext when translated
+                case MethodCallExpression call when !IsSequenceOperator(call) && !IsEfProperty(call):
+                    return (call.Object == null ? null : ShapeOf(call.Object) as EncryptedValue)
+                           ?? call.Arguments.Select(ShapeOf).OfType<EncryptedValue>().FirstOrDefault();
 
                 case ConditionalExpression conditional:
                     return ShapeOf(conditional.IfTrue) as EncryptedValue ?? ShapeOf(conditional.IfFalse) as EncryptedValue;
@@ -722,6 +801,10 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
                 MemberInitExpression x => [..x.Bindings.OfType<MemberAssignment>().Select(b => b.Expression)],
                 var x => [x]
             };
+
+        private static bool IsComparison(ExpressionType type)
+            => type is ExpressionType.Equal or ExpressionType.NotEqual or ExpressionType.GreaterThan or ExpressionType.GreaterThanOrEqual
+                or ExpressionType.LessThan or ExpressionType.LessThanOrEqual or ExpressionType.AndAlso or ExpressionType.OrElse;
 
         private static bool IsEfProperty(MethodCallExpression node)
             => node.Method.DeclaringType == typeof(EF) && node.Method.Name == nameof(EF.Property);

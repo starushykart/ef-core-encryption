@@ -108,7 +108,7 @@ public class DbContextRootKeyStoreTests(PostgresContainerFixture postgres, ITest
 
         var act = () => store.TryAddAsync(typeof(TestDbContext), invalid, CancellationToken.None);
 
-        await act.Should().ThrowAsync<DbUpdateException>();
+        await act.Should().ThrowAsync<System.Data.Common.DbException>();
     }
 
     protected override void Configure(IServiceCollection services)

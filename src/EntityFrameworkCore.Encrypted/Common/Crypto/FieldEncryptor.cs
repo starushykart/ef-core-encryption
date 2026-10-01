@@ -18,6 +18,9 @@ internal sealed class FieldEncryptor(DataKeyRing? keyRing, Type contextType, str
 
     public string Label => label;
 
+    /// <summary>Key ring of the application that built the model.</summary>
+    public DataKeyRing? KeyRing => keyRing;
+
     /// <param name="envelope">Destination of <see cref="Envelope.GetLength"/> bytes.</param>
     public void Encrypt(ReadOnlySpan<byte> plaintext, Span<byte> envelope)
     {
@@ -117,7 +120,7 @@ internal sealed class FieldEncryptor(DataKeyRing? keyRing, Type contextType, str
             : StoredFormat.Legacy;
 
         // most likely in the library's format, from a deployment with a newer data key version: authenticated first
-        if (format == StoredFormat.Unclear && TryDecryptCurrent(decoded.AsSpan(0, length)) is { } current)
+        if (format == StoredFormat.Unclear && TryDecryptCurrent(decoded.AsSpan(0, length), legacy) is { } current)
         {
             plaintext = Encoding.UTF8.GetString(current);
             CryptographicOperations.ZeroMemory(current);
@@ -139,7 +142,7 @@ internal sealed class FieldEncryptor(DataKeyRing? keyRing, Type contextType, str
 
         var format = Classify(stored, legacy);
 
-        if (format == StoredFormat.Unclear && TryDecryptCurrent(stored) is { } current)
+        if (format == StoredFormat.Unclear && TryDecryptCurrent(stored, legacy) is { } current)
         {
             plaintext = current;
             return true;
@@ -166,17 +169,18 @@ internal sealed class FieldEncryptor(DataKeyRing? keyRing, Type contextType, str
         if (!Envelope.HasHeader(decoded) || Envelope.ReadKeyId(decoded).RootKeyId == 0)
             return StoredFormat.Legacy;
 
-        if (Envelope.ReadKeyId(decoded).DataKeyVersion <= keyRing!.DataKeyVersion)
-            return StoredFormat.Current;
-
-        // a newer data key version than configured: a newer deployment, or legacy ciphertext. Plaintext would
-        // return the ciphertext as the value, so only decryptors that recognize their own format are asked
-        return legacy is PlaintextLegacyDecryptor ? StoredFormat.Current : StoredFormat.Unclear;
+        // a newer data key version than configured: a newer deployment, or a legacy value that looks like one
+        return Envelope.ReadKeyId(decoded).DataKeyVersion <= keyRing!.DataKeyVersion ? StoredFormat.Current : StoredFormat.Unclear;
     }
 
-    // a legacy scheme without authentication would return garbage for a value in the library's format
-    private byte[]? TryDecryptCurrent(ReadOnlySpan<byte> envelope)
+    // a legacy scheme without authentication would return garbage for a value in the library's format. Legacy
+    // ciphertext looks like this about once in 256 values: only keys already loaded are used for it, so reading it
+    // doesn't query the key store. Plaintext would return a value in the library's format as is, so it may load keys
+    private byte[]? TryDecryptCurrent(ReadOnlySpan<byte> envelope, ILegacyDecryptor legacy)
     {
+        if (legacy is not PlaintextLegacyDecryptor && !keyRing!.HasDecryptionKey(contextType, Envelope.ReadKeyId(envelope)))
+            return null;
+
         try
         {
             return Decrypt(envelope);

@@ -120,6 +120,29 @@ public abstract class RelationalProviderTests(ITestOutputHelper helper) : IAsync
     }
 
     [Fact]
+    public async Task Should_re_encrypt_tables_larger_than_a_page()
+    {
+        // pages of 1,000 rows by composite key: several rows per sensor, precise timestamps as the second key column
+        var at = new DateTime(2026, 10, 1, 12, 30, 45, DateTimeKind.Utc).AddTicks(1234560);
+        var readings = Enumerable.Range(0, 2500)
+            .Select(i => new Reading { Sensor = new SensorId($"s{i % 3}"), At = at.AddTicks(i * 10), Value = $"value {i}" })
+            .ToList();
+
+        await using (var scope = _provider.CreateAsyncScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<ProviderDbContext>();
+            context.AddRange(readings);
+            await context.SaveChangesAsync();
+        }
+
+        await _provider.RotateRootKeyAsync<ProviderDbContext>();
+
+        (await _provider.ReEncryptAsync<ProviderDbContext>(batchSize: 300)).Should().Be(new ReEncryptionResult(ReEncrypted: 2500, Skipped: 0, Invalid: 0));
+        (await _provider.GetKeyUsageAsync<ProviderDbContext>()).Should().ContainSingle(x => x.Table.EndsWith("Readings"))
+            .Which.Should().Match<KeyUsage>(x => x.RootKeyId == 2 && x.Values == 2500);
+    }
+
+    [Fact]
     public async Task Should_keep_keys_created_inside_a_rolled_back_transaction_scope()
     {
         Assert.SkipUnless(SupportsConcurrentConnectionsInTransactionScope, "one connection at a time can write");

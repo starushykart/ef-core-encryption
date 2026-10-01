@@ -24,6 +24,8 @@ namespace EntityFrameworkCore.Encrypted.Common.Maintenance;
 /// </summary>
 internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory, DataKeyRing keyRing, ILogger<EncryptedDataMaintenance> logger)
 {
+    private const int PageSize = 1000;
+
     public async Task<IReadOnlyList<KeyUsage>> GetKeyUsageAsync(Type contextType, CancellationToken cancellationToken)
     {
         using var activity = Telemetry.StartActivity("key_usage", contextType);
@@ -67,15 +69,11 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
 
         long reEncrypted = 0, skipped = 0, invalid = 0;
 
-        await using var readerScope = scopeFactory.CreateAsyncScope();
-        await using var reader = OwnedContext.Create(readerScope.ServiceProvider, contextType);
+        await using var scope = scopeFactory.CreateAsyncScope();
+        await using var owned = OwnedContext.Create(scope.ServiceProvider, contextType);
+        var context = owned.Context;
 
-        // updates run on a second connection: the reader streams the table on the first one
-        await using var writerScope = scopeFactory.CreateAsyncScope();
-        await using var writer = OwnedContext.Create(writerScope.ServiceProvider, contextType);
-        var writerContext = await GetWriterAsync(reader, writer, cancellationToken);
-
-        foreach (var table in EncryptedTable.From(reader.Context, logger))
+        foreach (var table in EncryptedTable.From(context, logger))
         {
             if (table.KeyColumns.Count == 0)
             {
@@ -88,7 +86,7 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
 
             async ValueTask FlushAsync()
             {
-                var (updated, conflicts) = await ExecuteAsync(writerContext, pending, cancellationToken);
+                var (updated, conflicts) = await ExecuteAsync(context, pending, cancellationToken);
                 reEncrypted += updated;
                 skipped += conflicts;
                 Telemetry.RecordReEncryption(contextType, "reencrypted", updated);
@@ -99,7 +97,7 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
                 active = keyRing.GetEncryptionKey(contextType).KeyId;
             }
 
-            await ScanAsync(reader.Context, table, async (keys, values) =>
+            await ScanAsync(context, table, async (keys, values) =>
             {
                 for (var i = 0; i < table.Columns.Count; i++)
                 {
@@ -154,14 +152,11 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
 
         long rebuilt = 0;
 
-        await using var readerScope = scopeFactory.CreateAsyncScope();
-        await using var reader = OwnedContext.Create(readerScope.ServiceProvider, contextType);
+        await using var scope = scopeFactory.CreateAsyncScope();
+        await using var owned = OwnedContext.Create(scope.ServiceProvider, contextType);
+        var context = owned.Context;
 
-        await using var writerScope = scopeFactory.CreateAsyncScope();
-        await using var writer = OwnedContext.Create(writerScope.ServiceProvider, contextType);
-        var writerContext = await GetWriterAsync(reader, writer, cancellationToken);
-
-        foreach (var table in EncryptedTable.From(reader.Context, logger).Where(x => x.Columns.Any(c => c.Index != null)))
+        foreach (var table in EncryptedTable.From(context, logger).Where(x => x.Columns.Any(c => c.Index != null)))
         {
             if (table.KeyColumns.Count == 0)
             {
@@ -173,26 +168,31 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
 
             async ValueTask FlushAsync()
             {
-                rebuilt += (await ExecuteAsync(writerContext, pending, cancellationToken)).Updated;
+                rebuilt += (await ExecuteAsync(context, pending, cancellationToken)).Updated;
                 pending.Clear();
                 logger.LogInformation("Rebuilt {Count} blind indexes so far, now in {Table}", rebuilt, table.DisplayName);
             }
 
-            await ScanAsync(reader.Context, table, async (keys, values) =>
+            await ScanAsync(context, table, async (keys, values) =>
             {
                 for (var i = 0; i < table.Columns.Count; i++)
                 {
                     var column = table.Columns[i];
 
-                    if (column.Index is not { } index || values[i] is not { } value)
+                    if (column.Index is not { } index)
                         continue;
 
-                    var hash = TryComputeIndex(table, column, value);
-
-                    if (hash == null || values[table.Columns.Count + i] is byte[] stored && stored.AsSpan().SequenceEqual(hash))
-                        continue;
-
-                    pending.Add(new Update(table, index.Store, column.Store, keys, value, hash));
+                    // no value, but an index (e.g. written with SQL): lookups would still find the row
+                    if (values[i] is not { } value)
+                    {
+                        if (values[table.Columns.Count + i] != null)
+                            pending.Add(new Update(table, index.Store, column.Store, keys, OldValue: null, NewValue: null));
+                    }
+                    else if (TryComputeIndex(table, column, value) is { } hash
+                             && !(values[table.Columns.Count + i] is byte[] stored && stored.AsSpan().SequenceEqual(hash)))
+                    {
+                        pending.Add(new Update(table, index.Store, column.Store, keys, value, hash));
+                    }
 
                     if (pending.Count >= batchSize)
                         await FlushAsync();
@@ -205,41 +205,6 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
 
         activity?.SetTag("rebuilt", rebuilt);
         return rebuilt;
-    }
-
-    /// <summary>
-    /// Updates run on a second connection while the reader streams the table on the first one, so the application
-    /// can keep writing. SQLite without WAL locks the whole database for the reader: there they run on the reader's
-    /// connection, which SQLite allows.
-    /// </summary>
-    private static async Task<DbContext> GetWriterAsync(OwnedContext reader, OwnedContext writer, CancellationToken cancellationToken)
-    {
-        if (reader.Context.Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite"
-            && !string.Equals(await GetJournalModeAsync(reader.Context, cancellationToken), "wal", StringComparison.OrdinalIgnoreCase))
-            return reader.Context;
-
-        if (ReferenceEquals(reader.Context.Database.GetDbConnection(), writer.Context.Database.GetDbConnection()))
-            throw new EntityFrameworkEncryptionException(
-                $"{reader.Context.GetType().Name} is configured with a shared DbConnection instance, but maintenance operations " +
-                "need two connections: one reads the table while the other writes. Configure it with a connection string");
-
-        return writer.Context;
-    }
-
-    private static async Task<string?> GetJournalModeAsync(DbContext context, CancellationToken cancellationToken)
-    {
-        await context.Database.OpenConnectionAsync(cancellationToken);
-
-        try
-        {
-            await using var command = context.Database.GetDbConnection().CreateCommand();
-            command.CommandText = "PRAGMA journal_mode";
-            return (await command.ExecuteScalarAsync(cancellationToken))?.ToString();
-        }
-        finally
-        {
-            await context.Database.CloseConnectionAsync();
-        }
     }
 
     private byte[]? TryComputeIndex(EncryptedTable table, EncryptedColumn column, object value)
@@ -326,44 +291,84 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
         }
     }
 
+    /// <summary>
+    /// Reads the rows with encrypted values in pages ordered by primary key, the reader closed before the rows are
+    /// processed: a long-running scan would hold locks the updates wait for (SQL Server) or an old snapshot (PostgreSQL).
+    /// Tables without a primary key are read in one go (key usage only).
+    /// </summary>
     private static async Task ScanAsync(
         DbContext context, EncryptedTable table, Func<object[], object?[], ValueTask> onRow, CancellationToken cancellationToken)
     {
         var sql = context.GetService<ISqlGenerationHelper>();
+        var keys = table.KeyColumns.Select(x => sql.DelimitIdentifier(x.Name)).ToList();
+
         // keys, encrypted values, then blind indexes (NULL for columns without one)
-        var columns = table.KeyColumns.Select(x => sql.DelimitIdentifier(x.Name))
+        var columns = string.Join(", ", keys
             .Concat(table.Columns.Select(x => sql.DelimitIdentifier(x.Name)))
-            .Concat(table.Columns.Select(x => x.Index is { } index ? sql.DelimitIdentifier(index.Store.Name) : "NULL"));
-        var notNull = table.Columns.Select(x => $"{sql.DelimitIdentifier(x.Name)} IS NOT NULL");
+            .Concat(table.Columns.Select(x => x.Index is { } index ? sql.DelimitIdentifier(index.Store.Name) : "NULL")));
+        // blind indexes too: an index without a value is cleared by the rebuild
+        var notNull = $"({string.Join(" OR ", table.Columns
+            .SelectMany(x => x.Index is { } index ? [x.Name, index.Store.Name] : new[] { x.Name })
+            .Select(x => $"{sql.DelimitIdentifier(x)} IS NOT NULL"))})";
+        var paged = keys.Count > 0;
+        object[]? last = null;
 
-        await context.Database.OpenConnectionAsync(cancellationToken);
-
-        try
+        while (true)
         {
-            await using var command = context.Database.GetDbConnection().CreateCommand();
-            command.CommandText = $"SELECT {string.Join(", ", columns)} FROM {sql.DelimitIdentifier(table.Name, table.Schema)} " +
-                                  $"WHERE {string.Join(" OR ", notNull)}";
-            command.CommandTimeout = context.Database.GetCommandTimeout() ?? command.CommandTimeout;
+            var page = new List<(object[] Keys, object?[] Values)>();
+            await context.Database.OpenConnectionAsync(cancellationToken);
 
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-
-            while (await reader.ReadAsync(cancellationToken))
+            try
             {
-                var keys = new object[table.KeyColumns.Count];
-                var values = new object?[table.Columns.Count * 2];
+                await using var command = context.Database.GetDbConnection().CreateCommand();
+                command.CommandTimeout = context.Database.GetCommandTimeout() ?? command.CommandTimeout;
 
-                for (var i = 0; i < keys.Length; i++)
-                    keys[i] = reader.GetValue(i);
+                var where = notNull;
 
-                for (var i = 0; i < values.Length; i++)
-                    values[i] = reader.IsDBNull(keys.Length + i) ? null : reader.GetValue(keys.Length + i);
+                // after the last row of the previous page: k0 > @k0 OR (k0 = @k0 AND k1 > @k1) ...
+                if (last != null)
+                {
+                    var after = keys.Select((_, i) => string.Join(" AND ", keys.Take(i + 1).Select((key, j) =>
+                        $"{key} {(j == i ? ">" : "=")} {sql.GenerateParameterNamePlaceholder($"k{j}")}")));
+                    where += $" AND ({string.Join(" OR ", after.Select(x => $"({x})"))})";
 
-                await onRow(keys, values);
+                    for (var i = 0; i < last.Length; i++)
+                        AddParameter(command.Parameters, command, sql, $"k{i}", table.KeyColumns[i].Mapping, last[i]);
+                }
+
+                var from = $"FROM {sql.DelimitIdentifier(table.Name, table.Schema)} WHERE {where}";
+
+                command.CommandText = !paged ? $"SELECT {columns} {from}"
+                    : $"SELECT {columns} {from} ORDER BY {string.Join(", ", keys)} {Limit(context.Database.ProviderName)}";
+
+                await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    var rowKeys = new object[keys.Count];
+                    var values = new object?[table.Columns.Count * 2];
+
+                    for (var i = 0; i < rowKeys.Length; i++)
+                        rowKeys[i] = reader.GetValue(i);
+
+                    for (var i = 0; i < values.Length; i++)
+                        values[i] = reader.IsDBNull(rowKeys.Length + i) ? null : reader.GetValue(rowKeys.Length + i);
+
+                    page.Add((rowKeys, values));
+                }
             }
-        }
-        finally
-        {
-            await context.Database.CloseConnectionAsync();
+            finally
+            {
+                await context.Database.CloseConnectionAsync();
+            }
+
+            foreach (var (rowKeys, values) in page)
+                await onRow(rowKeys, values);
+
+            if (!paged || page.Count < PageSize)
+                return;
+
+            last = page[^1].Keys;
         }
     }
 
@@ -416,6 +421,22 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
             await transaction.CommitAsync(ct);
             return (updated, updates.Count(x => x.Counted) - updated);
         }, cancellationToken);
+
+    // the SQL standard (SQL Server, PostgreSQL, Oracle, Db2, Firebird), except providers that only support LIMIT
+    private static string Limit(string? provider)
+        => provider is "Microsoft.EntityFrameworkCore.Sqlite" or "Pomelo.EntityFrameworkCore.MySql" or "MySql.EntityFrameworkCore"
+            ? $"LIMIT {PageSize}"
+            : $"OFFSET 0 ROWS FETCH NEXT {PageSize} ROWS ONLY";
+
+    private static void AddParameter(
+        DbParameterCollection parameters, DbCommand factory, ISqlGenerationHelper sql, string name, RelationalTypeMapping mapping, object value)
+    {
+        // configured without a value: values are as read from or written to the column, the converter of the
+        // mapping (e.g. of a strongly typed id) must not run on them
+        var parameter = mapping.CreateParameter(factory, sql.GenerateParameterName(name), null, nullable: value == DBNull.Value);
+        parameter.Value = value;
+        parameters.Add(parameter);
+    }
 
     /// <summary>Column with its type mapping: parameters are typed like the column (e.g. datetime2, varchar, enums).</summary>
     private sealed record StoreColumn(string Name, RelationalTypeMapping Mapping)
@@ -508,7 +529,7 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
     /// <param name="CheckedColumn">Encrypted column that must still contain <paramref name="OldValue"/>.</param>
     /// <param name="Counted">Counted in the result: <c>false</c> for blind indexes set along with re-encrypted values.</param>
     private sealed record Update(
-        EncryptedTable Table, StoreColumn Column, StoreColumn CheckedColumn, object[] Keys, object OldValue, object NewValue, bool Counted = true)
+        EncryptedTable Table, StoreColumn Column, StoreColumn CheckedColumn, object[] Keys, object? OldValue, object? NewValue, bool Counted = true)
     {
         public string ToSql(ISqlGenerationHelper sql)
         {
@@ -516,26 +537,23 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
 
             return $"UPDATE {sql.DelimitIdentifier(Table.Name, Table.Schema)} " +
                    $"SET {sql.DelimitIdentifier(Column.Name)} = {sql.GenerateParameterNamePlaceholder("new_value")} " +
-                   $"WHERE {string.Join(" AND ", keys)} AND {sql.DelimitIdentifier(CheckedColumn.Name)} = {sql.GenerateParameterNamePlaceholder("old_value")}";
+                   $"WHERE {string.Join(" AND ", keys)} AND {sql.DelimitIdentifier(CheckedColumn.Name)} " +
+                   (OldValue == null ? "IS NULL" : $"= {sql.GenerateParameterNamePlaceholder("old_value")}");
         }
 
         /// <param name="factory">Creates the parameters, configured by the type mapping of their column.</param>
         public void AddParameters(DbParameterCollection parameters, DbCommand factory, ISqlGenerationHelper sql)
         {
-            Add("new_value", Column.Mapping, NewValue);
-            Add("old_value", CheckedColumn.Mapping, OldValue);
+            Add("new_value", Column.Mapping, NewValue ?? DBNull.Value);
+
+            if (OldValue != null)
+                Add("old_value", CheckedColumn.Mapping, OldValue);
 
             for (var i = 0; i < Keys.Length; i++)
                 Add($"k{i}", Table.KeyColumns[i].Mapping, Keys[i]);
 
             void Add(string name, RelationalTypeMapping mapping, object value)
-            {
-                // configured without a value: values are as read from or written to the column, the converter of the
-                // mapping (e.g. of a strongly typed id) must not run on them
-                var parameter = mapping.CreateParameter(factory, sql.GenerateParameterName(name), null, nullable: false);
-                parameter.Value = value;
-                parameters.Add(parameter);
-            }
+                => AddParameter(parameters, factory, sql, name, mapping, value);
         }
     }
 }

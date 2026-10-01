@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using EntityFrameworkCore.Encrypted.Common.Exceptions;
 using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.TestContext;
 using AwesomeAssertions;
+using EntityFrameworkCore.Encrypted.Annotations;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -76,7 +77,21 @@ public class EncryptedQueryGuardTests : IDisposable
             { "record projection order", q => q.Select(x => new DocumentRecord(x.Id, x.Text)).OrderBy(a => a.Text) },
             { "let", q => from x in q let s = x.Text where s == value select x },
             { "group element max", q => q.GroupBy(x => x.Id, x => x.Text).Select(g => g.Max()) },
-            { "group element distinct", q => q.GroupBy(x => 1, x => x.Text).Select(g => g.Distinct().Count()) }
+            { "group element distinct", q => q.GroupBy(x => 1, x => x.Text).Select(g => g.Distinct().Count()) },
+            { "arithmetic", q => q.Where(x => x.Amount * 12 > 1000) },
+            { "modulo", q => q.Where(x => x.Amount % 2 == 0) },
+            { "negation", q => q.Where(x => -x.Amount < 0) },
+            { "math function", q => q.Where(x => Math.Abs(x.Amount) > 5) },
+            { "order by arithmetic", q => q.OrderBy(x => x.Amount * 2) },
+            { "group by arithmetic", q => q.GroupBy(x => x.Amount / 10).Select(g => g.Key) },
+            { "method on value type", q => q.Where(x => x.Amount.ToString() == value) },
+            { "bool predicate", q => q.Where(x => x.Flag) },
+            { "negated bool predicate", q => q.Where(x => !x.Flag) },
+            { "bool in condition", q => q.Where(x => x.Flag && x.Id > 1) },
+            { "bool in conditional", q => q.Select(x => x.Flag ? 1 : 0) },
+            { "count by bool", q => q.Where(_ => q.Count(x => x.Flag) > 0) },
+            { "sum", q => q.Select(_ => q.Sum(x => x.Amount)) },
+            { "average projection", q => q.Select(_ => q.Select(x => x.Amount).Average()) }
         };
     }
 
@@ -124,7 +139,11 @@ public class EncryptedQueryGuardTests : IDisposable
             { "anonymous projection filtered by null", q => q.Select(x => new { x.Id, x.Text }).Where(a => a.Text == null) },
             { "group element count", q => q.GroupBy(x => x.Id, x => x.Text).Select(g => new { g.Key, Count = g.Count() }) },
             { "let filtered by other column", q => from x in q let s = x.Text where x.Id > 1 select s },
-            { "plain column compared", q => q.Where(x => x.Title == "a") }
+            { "plain column compared", q => q.Where(x => x.Title == "a") },
+            { "project arithmetic", q => q.Select(x => new { x.Id, x.Amount }) },
+            { "project bool", q => q.Select(x => x.Flag) },
+            { "bool predicate on plain column", q => q.Where(x => x.Title != null && x.Id > 1) },
+            { "conditional on null check", q => q.Select(x => x.Text == null ? "none" : x.Text) }
         };
 
     [Theory]
@@ -150,6 +169,41 @@ public class EncryptedQueryGuardTests : IDisposable
 
         toPlainColumn.Should().Throw<EntityFrameworkEncryptionException>().WithMessage("Document.Text is encrypted and can't be copied*");
         fromColumn.Should().Throw<EntityFrameworkEncryptionException>().WithMessage("Document.Text is encrypted and can only be set to a value*");
+    }
+
+    [Fact]
+    public void Should_reject_execute_update_copying_values_computed_from_ciphertext()
+    {
+        var act = () => _context.Documents.ExecuteUpdate(s => s.SetProperty(x => x.Title, x => (x.Amount * 2).ToString()));
+
+        act.Should().Throw<EntityFrameworkEncryptionException>().WithMessage("Document.Amount is encrypted and can't be copied*");
+    }
+
+    [Fact]
+    public void Should_reject_query_filters_on_encrypted_columns()
+    {
+        using var provider = new ServiceCollection()
+            .AddEncryption(x => x.UseKey(RandomNumberGenerator.GetBytes(32)))
+            .AddDbContext<FilteredDbContext>(x => x.UseNpgsql(DocumentDbContext.ConnectionString).UseEncryption())
+            .BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<FilteredDbContext>();
+
+        var act = () => context.Documents.ToQueryString();
+
+        act.Should().Throw<EntityFrameworkEncryptionException>().WithMessage("Document.Text is encrypted and can't be compared*");
+    }
+
+    private sealed class FilteredDbContext(DbContextOptions<FilteredDbContext> options) : DbContext(options)
+    {
+        public DbSet<Document> Documents => Set<Document>();
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+            => modelBuilder.Entity<Document>(e =>
+            {
+                e.Property(x => x.Text).IsEncrypted();
+                e.HasQueryFilter(x => x.Text != "hidden");
+            });
     }
 
     private static string? Mask(string? value)

@@ -30,9 +30,7 @@
       - "4566:4566"
     environment:
       SERVICES: kms
-      PERSISTENCE: 1
       HOSTNAME_EXTERNAL: localstack
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./dev-env/localstack-data:/var/lib/localstack
       - ./dev-env/init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh

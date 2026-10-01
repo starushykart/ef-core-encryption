@@ -7,6 +7,7 @@ using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Extensions;
 using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Keys;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -52,6 +53,9 @@ public abstract class BlindIndexProviderTests(ITestOutputHelper helper) : IAsync
         (await db.People.Where(x => x.Ssn != ssn).Select(x => x.Name).ToListAsync()).Should().BeEquivalentTo("john", "max");
         (await db.People.CountAsync(x => x.Ssn == "111-22-3333 ")).Should().Be(0, "only the email is normalized");
         (await db.People.SingleAsync(x => x.Contact!.Phone == "+1 555 0100")).Name.Should().Be("jane");
+        (await db.People.SingleAsync(x => x.Email!.Equals(email))).Name.Should().Be("jane");
+        (await db.People.SingleAsync(x => string.Equals(ssn, x.Ssn))).Name.Should().Be("jane");
+        (await db.People.SingleAsync(x => Equals(x.Status, PersonStatus.Blocked))).Name.Should().Be("john");
     }
 
     [Fact]
@@ -64,6 +68,30 @@ public abstract class BlindIndexProviderTests(ITestOutputHelper helper) : IAsync
         var db = scope.ServiceProvider.GetRequiredService<BlindIndexDbContext>();
 
         (await db.People.Where(x => emails.Contains(x.Email)).Select(x => x.Name).ToListAsync()).Should().BeEquivalentTo("jane", "max");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("+1 555 0199")]
+    public async Task Should_update_blind_index_when_owned_entity_is_replaced(string? phone)
+    {
+        var jane = (await AddPeopleAsync(_provider))[0];
+
+        await using (var scope = _provider.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BlindIndexDbContext>();
+            var person = await db.People.SingleAsync(x => x.Id == jane.Id);
+            person.Contact = new Contact { Phone = phone };
+            await db.SaveChangesAsync();
+        }
+
+        await using var verify = _provider.CreateAsyncScope();
+        var people = verify.ServiceProvider.GetRequiredService<BlindIndexDbContext>().People;
+
+        (await people.CountAsync(x => x.Contact!.Phone == "+1 555 0100")).Should().Be(0);
+
+        if (phone != null)
+            (await people.SingleAsync(x => x.Contact!.Phone == phone)).Name.Should().Be("jane");
     }
 
     [Fact]
@@ -284,6 +312,27 @@ public abstract class BlindIndexProviderTests(ITestOutputHelper helper) : IAsync
         await using var verify = _provider.CreateAsyncScope();
         (await verify.ServiceProvider.GetRequiredService<BlindIndexDbContext>().People.SingleAsync(x => x.Email == "max@example.com"))
             .Name.Should().Be("max");
+    }
+
+    [Fact]
+    public async Task Should_clear_blind_indexes_of_null_values_when_rebuilding()
+    {
+        var people = await AddPeopleAsync(_provider);
+
+        // a value removed with SQL, its blind index left behind
+        await using (var scope = _provider.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BlindIndexDbContext>();
+            var sql = db.GetService<Microsoft.EntityFrameworkCore.Storage.ISqlGenerationHelper>();
+            await db.Database.ExecuteSqlRawAsync(
+                $"UPDATE {sql.DelimitIdentifier("People")} SET {sql.DelimitIdentifier("Email")} = NULL WHERE {sql.DelimitIdentifier("Name")} = 'max'");
+        }
+
+        (await _provider.RebuildBlindIndexesAsync<BlindIndexDbContext>()).Should().Be(1);
+
+        await using var verify = _provider.CreateAsyncScope();
+        (await verify.ServiceProvider.GetRequiredService<BlindIndexDbContext>().People.CountAsync(x => x.Email == people[2].Email))
+            .Should().Be(0);
     }
 
     public async ValueTask DisposeAsync()

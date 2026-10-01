@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
+// registered before AddEncryption: the database is migrated before the keys are loaded
 builder.Services.AddHostedService<MigrationHostedService>();
 builder.Services.AddHostedService<LegacyContractsSeeder>();
 
@@ -66,6 +67,50 @@ app.MapGet("/customers/by-email", async (string email, EncryptedDbContext contex
         ? Results.Ok(customer)
         : Results.NotFound());
 
+// tracked update: changed values are encrypted again on save, and the blind index of the email follows the new value
+app.MapPut("/customers/{id:guid}", async (Guid id, UpdateCustomer request, EncryptedDbContext context, CancellationToken ct) =>
+{
+    if (await context.Customers.FindAsync([id], ct) is not { } customer)
+        return Results.NotFound();
+
+    customer.Name = request.Name;
+    customer.Email = request.Email;
+    customer.Phone = request.Phone;
+    customer.Address.Street = request.Street;
+    customer.Address.City = request.City;
+
+    await context.SaveChangesAsync(ct);
+    return Results.Ok(customer);
+});
+
+// bulk update without loading the entity: the new value is encrypted, and its blind index is set in the same statement
+app.MapPatch("/customers/{id:guid}/email", async (Guid id, string email, EncryptedDbContext context, CancellationToken ct)
+    => await context.Customers
+        .Where(x => x.Id == id)
+        .ExecuteUpdateAsync(s => s.SetProperty(x => x.Email, email), ct) == 1
+        ? Results.NoContent()
+        : Results.NotFound());
+
+// encrypted values can be set in bulk too, also for properties without a blind index
+app.MapPost("/customers/{id:guid}/block", async (Guid id, EncryptedDbContext context, CancellationToken ct)
+    => await context.Customers
+        .Where(x => x.Id == id)
+        .ExecuteUpdateAsync(s => s.SetProperty(x => x.Status, CustomerStatus.Blocked), ct) == 1
+        ? Results.NoContent()
+        : Results.NotFound());
+
+app.MapDelete("/customers/{id:guid}", async (Guid id, EncryptedDbContext context, CancellationToken ct)
+    => await context.Customers.Where(x => x.Id == id).ExecuteDeleteAsync(ct) == 1 ? Results.NoContent() : Results.NotFound());
+
+// what's stored in the database: ciphertext, and the keyed hash of the email
+app.MapGet("/customers/stored", (EncryptedDbContext context, CancellationToken ct)
+    => context.Database
+        .SqlQuery<StoredCustomer>($"""
+            SELECT "Name", "Email", "Email_Index" AS "EmailIndex", "Phone", "Status", "BirthDate", "Address_Street" AS "Street", "Passport"
+            FROM "Customers" ORDER BY "Name"
+            """)
+        .ToListAsync(ct));
+
 // the phone has no blind index: comparing it in a query throws instead of silently returning nothing
 app.MapGet("/customers/by-phone", async (string phone, EncryptedDbContext context, CancellationToken ct) =>
 {
@@ -118,5 +163,17 @@ internal sealed record CreateCustomer(
     string Street,
     string City,
     string? PassportScanBase64);
+
+internal sealed record UpdateCustomer(string Name, string Email, string? Phone, string Street, string City);
+
+internal sealed record StoredCustomer(
+    string Name,
+    string Email,
+    byte[]? EmailIndex,
+    string? Phone,
+    string Status,
+    string BirthDate,
+    string Street,
+    byte[]? Passport);
 
 internal sealed record StoredContract(string Number, string Iban);

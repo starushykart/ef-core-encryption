@@ -28,7 +28,7 @@ You'd usually call them from an admin endpoint, a background job or a small one-
 
 | I want to... | Do this |
 |--------------|---------|
-| rotate a static key | add the new key with a higher id, e.g. `UseKey(newKey, id: 2)` |
+| rotate a static key | add the new key with a higher id, e.g. `UseKey(newKey, id: 2)`; see [rolling deployments](#static-keys-and-rolling-deployments) |
 | rotate the root key with KMS | call `RotateRootKeyAsync` |
 | rotate keys without any KMS calls | bump the data key version with `UseDataKeyVersion(n + 1)` |
 | get rid of an old key | run `ReEncryptAsync`, then check `GetKeyUsageAsync` |
@@ -48,6 +48,23 @@ int newRootKeyId = await app.Services.RotateRootKeyAsync<AppDbContext>();
 The new key is generated, stored in `__EncryptionKeys`, and used by this instance for new values right away. Everything encrypted before stays readable.
 
 With a static key there's nothing to generate. You add a new key with a higher id instead, and `RotateRootKeyAsync` throws to remind you.
+
+### Static keys and rolling deployments
+
+The key with the highest id encrypts new values as soon as an instance starts with it. During a rolling deployment, instances that are still running the old configuration can't read those values yet. So rotate in two deployments:
+
+1. Add the new key, but keep the current one active:
+
+   ```csharp
+   builder.Services.AddEncryption(x => x
+       .UseKey(builder.Configuration["Encryption:Keys:1"]!, id: 1)
+       .UseKey(builder.Configuration["Encryption:Keys:2"]!, id: 2)
+       .UseActiveKey(1));
+   ```
+
+2. Once every instance runs with both keys, remove `UseActiveKey`. Key 2 now encrypts new values, and every instance can already read them.
+
+The same two steps let you roll back the second deployment safely. If you only run one instance, or you can stop all of them during a deployment, one step is enough.
 
 ### What about other instances?
 
@@ -73,7 +90,7 @@ Values aren't encrypted with the root key directly. They're encrypted with a dat
 builder.Services.AddEncryption(x => x.UseAwsKms(keyId).UseDataKeyVersion(1));   // the default is 0
 ```
 
-Roll it out to all instances, and values written with older versions keep working.
+Roll it out to all instances, and values written with older versions keep working. A rolling deployment is safe too: instances still on the old version can already read values written with the new one, because data keys are derived, not stored. Any version works, including date-based ones like `20261001`.
 
 ## Key usage
 
@@ -114,7 +131,7 @@ It's designed to run while your app is serving traffic:
 - **Old data is migrated too.** With a [legacy decryptor](migrating), values written by your previous code (or plaintext) are re-encrypted into the library's format.
 - **Transient errors are retried**, using your context's execution strategy.
 
-It reads a table on one connection and writes on a second one, so the context has to be configured with a connection string rather than a shared `DbConnection` instance. On SQLite, use WAL mode (`PRAGMA journal_mode=WAL`, the default for databases EF creates): without it, SQLite locks the whole file while a table is read, so the writes go through the reading connection, and your app can't write until the job is done.
+- **It doesn't hold long locks.** Tables are read in pages of 1,000 rows by primary key, and each page is read completely before anything is written.
 
 ## Retiring an old key
 

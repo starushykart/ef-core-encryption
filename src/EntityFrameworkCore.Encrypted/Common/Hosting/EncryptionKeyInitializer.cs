@@ -3,17 +3,13 @@ using Microsoft.Extensions.Hosting;
 namespace EntityFrameworkCore.Encrypted.Common.Hosting;
 
 /// <summary>
-/// Loads data keys in <see cref="IHostedLifecycleService.StartingAsync"/>, which runs before
-/// <see cref="IHostedService.StartAsync"/> of any hosted service (migrations, background workers).
+/// Loads data keys on startup. Hosted services start in registration order: services registered before
+/// <c>AddEncryption</c> (e.g. migrations) run first, services registered after it find the keys loaded.
 /// </summary>
-internal sealed class EncryptionKeyInitializer(IServiceProvider serviceProvider) : IHostedLifecycleService
+internal sealed class EncryptionKeyInitializer(IServiceProvider serviceProvider) : IHostedService
 {
-    public Task StartingAsync(CancellationToken cancellationToken)
+    public Task StartAsync(CancellationToken cancellationToken)
         => serviceProvider.InitializeEncryptionAsync(cancellationToken);
 
-    public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-    public Task StartedAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-    public Task StoppingAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-    public Task StoppedAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }

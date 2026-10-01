@@ -93,11 +93,23 @@ SQLite locks the whole database while it saves. If the root key doesn't exist ye
 
 ## Startup fails with "Can't read __EncryptionKeys ... Make sure the database is migrated"
 
-The key table doesn't exist yet. Add a migration after enabling encryption. If migrations run during startup, the library notices the missing table and loads keys on first use instead, so you'll only see this error at runtime when the database really isn't migrated.
+The key table doesn't exist yet. Add a migration after enabling encryption. If migrations run in a hosted service, register it before `AddEncryption`, so it runs before the keys are loaded. Otherwise the library notices the missing table, logs a warning and loads keys on first use, so you'll only see this error at runtime when the database really isn't migrated.
 
 ## "... is part of a key or foreign key and can't be encrypted"
 
 Also: "... is a concurrency token", "... can't have a unique index" and "... has seed data (HasData) for encrypted properties". These mappings need the database to compare stored values, and encrypted values differ every time. [What can't be encrypted](encrypting-properties#what-cant-be-encrypted) has the alternatives.
+
+## "... are both mapped to column ..., but only one of them is encrypted"
+
+Two properties share a column, for example in a TPH hierarchy, and only one of them is encrypted. `ReEncryptAsync` can't tell their rows apart, so it would encrypt the plain values too. Encrypt both properties, or map them to different columns.
+
+## "The model of ... was built by another application in this process"
+
+The context replaces `IModelCacheKeyFactory` with `ReplaceService`, and the process runs several applications with their own encryption services, typically one per integration test. EF then reuses a model whose converters hold the keys of another application. Give each application its own context options, or don't replace the model cache key factory.
+
+## Loading a key fails during a query with a shared `DbConnection`
+
+Root keys other than the active one are loaded on demand, the first time a value encrypted with them is read. That happens through a context of the same type. If the context is configured with one `DbConnection` instance (common with SQLite in-memory databases), that load runs on the connection the query is still reading from, and fails. Configure the context with a connection string, or call `InitializeEncryptionAsync()` and avoid rotating root keys while such a context is in use.
 
 ## "The model of ... wasn't built with encryption"
 
@@ -106,10 +118,6 @@ The context uses `UseModel(...)`, for example a compiled model from `dotnet ef d
 ## "... is encrypted and can't be copied to another column in ExecuteUpdate"
 
 `ExecuteUpdate` sets a column from an encrypted one, or an encrypted column from another column. The database can't encrypt or decrypt, so load the entities and use `SaveChanges`.
-
-## "... is configured with a shared DbConnection instance"
-
-`ReEncryptAsync`, `GetKeyUsageAsync` and `RebuildBlindIndexesAsync` read on one connection while they write on another. Configure the context with a connection string instead of a `DbConnection` instance.
 
 ## "... already has the maximum number of root keys"
 

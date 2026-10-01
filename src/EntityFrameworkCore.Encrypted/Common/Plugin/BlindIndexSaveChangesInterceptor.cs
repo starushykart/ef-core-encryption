@@ -74,7 +74,7 @@ internal sealed class BlindIndexSaveChangesInterceptor : ISaveChangesInterceptor
         return Task.CompletedTask;
     }
 
-    /// <returns><c>true</c> if a blind index was set: the key store saves through the same context type, without them.</returns>
+    /// <returns><c>true</c> if a blind index was set, so the blind index key is needed.</returns>
     private static bool Start(DbContext context)
     {
         EncryptedModel.EnsureBuiltWithEncryption(context);
@@ -134,7 +134,20 @@ internal sealed class BlindIndexSaveChangesInterceptor : ISaveChangesInterceptor
         {
             foreach (var entry in tracker.Entries())
             {
-                if (entry.State is not (EntityState.Added or EntityState.Modified) || !indexes.TryGetValue(entry.Metadata, out var properties))
+                if (!indexes.TryGetValue(entry.Metadata, out var properties))
+                    continue;
+
+                // an owned entity replaced by a new one is saved as one update of the columns that differ from the
+                // deleted entity: its index would otherwise look unchanged when the new value is null
+                if (entry.State == EntityState.Deleted)
+                {
+                    foreach (var (source, index) in properties)
+                        entry.Property(index).OriginalValue = entry.Property(source).OriginalValue;
+
+                    continue;
+                }
+
+                if (entry.State is not (EntityState.Added or EntityState.Modified))
                     continue;
 
                 foreach (var (source, index) in properties)

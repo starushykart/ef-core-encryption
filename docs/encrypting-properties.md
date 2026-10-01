@@ -41,7 +41,7 @@ At its core the library encrypts `string` and `byte[]`. Anything that EF Core ca
 | your own value objects | Base64 text or binary | `HasConversion(...).IsEncrypted()` |
 | properties of complex types | as above | `[Encrypted]` inside the complex type |
 
-Your conversion always runs first, and its result is what gets encrypted. Any of these can also get a [blind index](blind-indexes), so you can look rows up by them.
+Your conversion always runs first, and its result is what gets encrypted. Any of these, except properties of complex types, can also get a [blind index](blind-indexes), so you can look rows up by them.
 
 ### Enums, dates and numbers
 
@@ -119,6 +119,11 @@ public string EmailAddress { get; set; } = null!;
 {: .tip }
 If you expect to rename things, set explicit labels like `"customers.email"` from day one. Then you never have to think about it.
 
+Labels follow the mapping:
+
+- With entity splitting (`SplitToTable`), a property gets the table it's moved to: `CustomerDetails.Email`.
+- With TPC, a property declared on the base type is stored in every concrete table but has one label, from the base type's table, or `Base.Property` when the base type is abstract. Values of that property can be moved between those tables. If that matters to you, declare the property on each concrete type instead. Making an abstract base type concrete later changes the label, so set an explicit label first.
+
 ## Why there's no maximum length
 
 Putting `[MaxLength]`, `HasMaxLength` or a sized column type like `varchar(100)` on an encrypted property throws when the model is built. That's deliberate. The ciphertext is 35 bytes longer than your value, and strings grow by another third when they're Base64 encoded, so the limit would cut off ciphertext at unexpected points. Validate the length of the value in your application instead.
@@ -131,6 +136,7 @@ The same value encrypts differently every time. A few things depend on the datab
 - **Concurrency tokens.** The stored value changes on every save, so every update would look like a conflict.
 - **Columns with a unique index.** Uniqueness wouldn't be enforced. To keep values unique, check with a [blind index](blind-indexes) lookup before saving.
 - **Seed data (`HasData`).** It's written into migrations without keys, and differently each time. Seed encrypted values from code on startup instead.
+- **A column shared by an encrypted and a plain property**, for example two types in a TPH hierarchy mapping different properties to one column. Encrypt both properties, or give them their own columns.
 
 A model passed with `UseModel(...)` isn't supported either. That includes compiled models from `dotnet ef dbcontext optimize`. Encrypted properties are configured while the model is built, so the first query or save throws instead of storing plaintext.
 

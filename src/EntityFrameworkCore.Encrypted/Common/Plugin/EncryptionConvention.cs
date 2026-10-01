@@ -66,6 +66,39 @@ internal sealed partial class EncryptionConvention(DataKeyRing? keyRing, Type co
 
             RejectSeedData(entityType);
         }
+
+        RejectSharedColumns(modelBuilder.Metadata);
+    }
+
+    // e.g. TPH types mapping different properties to one column: maintenance can't tell their rows apart, and would
+    // encrypt the plaintext values of the other type
+    private static void RejectSharedColumns(IConventionModel model)
+    {
+        var columns = new Dictionary<(string Table, string? Schema, string Column), IConventionProperty>();
+
+        foreach (var entityType in model.GetEntityTypes())
+        {
+            if (entityType.GetTableName() is not { } table)
+                continue;
+
+            var store = StoreObjectIdentifier.Table(table, entityType.GetSchema());
+
+            foreach (var property in GetDeclaredProperties(entityType))
+            {
+                if (property.GetColumnName(store) is not { } column)
+                    continue;
+
+                if (columns.TryAdd((table, store.Schema, column), property))
+                    continue;
+
+                var other = columns[(table, store.Schema, column)];
+
+                if (other.GetValueConverter() is IEncryptionConverter != property.GetValueConverter() is IEncryptionConverter)
+                    throw new EntityFrameworkEncryptionException(
+                        $"{DisplayName(other)} and {DisplayName(property)} are both mapped to column {column} of {table}, " +
+                        "but only one of them is encrypted. Encrypt both, or map them to different columns");
+            }
+        }
     }
 
     // seed data is inserted by migrations: values would be encrypted at design time (without keys) into the migration,
@@ -225,9 +258,20 @@ internal sealed partial class EncryptionConvention(DataKeyRing? keyRing, Type co
 
         var entityType = property.DeclaringType.ContainingEntityType;
 
+        if (entityType.GetTableName() is not { } table)
+            return $"{property.DeclaringType.ShortName()}.{property.Name}";
+
         // the column name within the table includes the complex property prefix: Address_Street
-        return entityType.GetTableName() is { } table
-            ? $"{table}.{property.GetColumnName(StoreObjectIdentifier.Table(table, entityType.GetSchema()))}"
-            : $"{property.DeclaringType.ShortName()}.{property.Name}";
+        if (property.GetColumnName(StoreObjectIdentifier.Table(table, entityType.GetSchema())) is { } column)
+            return $"{table}.{column}";
+
+        // moved to another table with entity splitting (SplitToTable)
+        foreach (var fragment in entityType.GetMappingFragments(StoreObjectType.Table))
+        {
+            if (property.GetColumnName(fragment.StoreObject) is { } fragmentColumn)
+                return $"{fragment.StoreObject.Name}.{fragmentColumn}";
+        }
+
+        return $"{property.DeclaringType.ShortName()}.{property.Name}";
     }
 }
