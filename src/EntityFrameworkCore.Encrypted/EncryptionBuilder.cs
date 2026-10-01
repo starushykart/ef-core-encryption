@@ -15,6 +15,7 @@ public sealed class EncryptionBuilder
     private ServiceDescriptor? _keyWrapper;
     private ServiceDescriptor? _rootKeyStore;
     private ServiceDescriptor? _rootKeyProvider;
+    private ServiceDescriptor? _legacyDecryptor;
     private EncryptionSettings _settings = new();
 
     internal EncryptionBuilder(IServiceCollection services)
@@ -106,6 +107,35 @@ public sealed class EncryptionBuilder
         return this;
     }
 
+    /// <summary>
+    /// Reads stored values that aren't in the library's format with <typeparamref name="TDecryptor"/>, e.g. values
+    /// encrypted by your previous code, to migrate to the library without downtime. See <see cref="ILegacyDecryptor"/>.
+    /// </summary>
+    public EncryptionBuilder UseLegacyDecryptor<TDecryptor>() where TDecryptor : class, ILegacyDecryptor
+    {
+        _legacyDecryptor = ServiceDescriptor.Singleton<ILegacyDecryptor, TDecryptor>();
+        return this;
+    }
+
+    /// <inheritdoc cref="UseLegacyDecryptor{TDecryptor}"/>
+    public EncryptionBuilder UseLegacyDecryptor(Func<IServiceProvider, ILegacyDecryptor> factory)
+    {
+        ArgumentNullException.ThrowIfNull(factory);
+        _legacyDecryptor = ServiceDescriptor.Singleton(factory);
+        return this;
+    }
+
+    /// <summary>
+    /// Reads stored values that aren't in the library's format with <paramref name="decryptor"/>, e.g.
+    /// <see cref="LegacyDecryptor.Plaintext"/> for columns that were stored unencrypted. See <see cref="ILegacyDecryptor"/>.
+    /// </summary>
+    public EncryptionBuilder UseLegacyDecryptor(ILegacyDecryptor decryptor)
+    {
+        ArgumentNullException.ThrowIfNull(decryptor);
+        _legacyDecryptor = ServiceDescriptor.Singleton(decryptor);
+        return this;
+    }
+
     /// <summary>Supplies root keys from a custom provider (tests).</summary>
     internal EncryptionBuilder UseRootKeyProvider(Func<IServiceProvider, IRootKeyProvider> factory)
     {
@@ -124,6 +154,9 @@ public sealed class EncryptionBuilder
             throw new EntityFrameworkEncryptionException("Only one root key source can be configured: UseKey(...) or UseKeyWrapper(...)");
 
         Services.TryAddSingleton(_settings);
+
+        if (_legacyDecryptor != null)
+            Services.TryAdd(_legacyDecryptor);
 
         // static keys use the store only for the blind index key
         Services.TryAdd(_rootKeyStore ?? ServiceDescriptor.Singleton<IRootKeyStore, DbContextRootKeyStore>());

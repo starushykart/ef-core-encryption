@@ -127,4 +127,10 @@ Putting `[MaxLength]`, `HasMaxLength` or a sized column type like `varchar(100)`
 
 Marking an existing column as encrypted doesn't encrypt the rows that are already there. Those values are still plaintext, and reading them fails with an "unsupported format" error. [`GetKeyUsageAsync`](key-management#key-usage) shows how many there are, listing them with an empty root key id.
 
-The safest way to migrate is to add a new encrypted property and copy the values over in application code, in batches: load the rows, assign the new property and call `SaveChanges`. Once every row is copied, drop the old column.
+Add the built-in plaintext decryptor while you migrate. The app can read the old values right away, and `ReEncryptAsync` encrypts them in place:
+
+```csharp
+builder.Services.AddEncryption(x => x.UseKey(key).UseLegacyDecryptor(LegacyDecryptor.Plaintext));
+```
+
+[Migrating existing data](migrating) walks through it. It also covers columns that are already encrypted by your previous code.

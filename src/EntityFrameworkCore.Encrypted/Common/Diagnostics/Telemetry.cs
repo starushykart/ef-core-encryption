@@ -34,6 +34,9 @@ internal static class Telemetry
     private static readonly Counter<long> ReEncryptedValues = Meter.CreateCounter<long>(
         Prefix + "reencryption.values", "{value}", "Values processed by re-encryption");
 
+    private static readonly Counter<long> LegacyValues = Meter.CreateCounter<long>(
+        Prefix + "legacy.values", "{value}", "Values read with the legacy decryptor: not migrated to the library's format yet");
+
     public static class Operations
     {
         public const string Encrypt = "encrypt";
@@ -51,6 +54,9 @@ internal static class Telemetry
         if (Values.Enabled)
             Values.Add(1, new KeyValuePair<string, object?>("db.context", contextName), new KeyValuePair<string, object?>("operation", operation));
     }
+
+    public static void RecordLegacyValue(string contextName)
+        => LegacyValues.Add(1, new KeyValuePair<string, object?>("db.context", contextName));
 
     public static void RecordDecryptionFailure(string contextName, string errorType)
         => DecryptionFailures.Add(1, new KeyValuePair<string, object?>("db.context", contextName), new KeyValuePair<string, object?>("error.type", errorType));

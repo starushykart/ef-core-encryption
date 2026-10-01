@@ -1,6 +1,6 @@
 ---
 title: Health check and OpenTelemetry
-nav_order: 8
+nav_order: 9
 ---
 
 # Health check and OpenTelemetry
@@ -49,6 +49,7 @@ builder.Services.AddOpenTelemetry()
 | `efcore.encryption.key_wrapper.duration` | histogram, seconds | `db.context`, `operation` (`generate`, `unwrap`, `rewrap`), `error.type` | how long calls to your key management service take |
 | `efcore.encryption.root_key.loads` | counter | `db.context`, `trigger` (`active`, `on_demand`, `refresh`), `result` | root keys loaded into memory |
 | `efcore.encryption.reencryption.values` | counter | `db.context`, `result` | values processed by re-encryption |
+| `efcore.encryption.legacy.values` | counter | `db.context` | values read with the [legacy decryptor](migrating), i.e. not migrated yet |
 
 These are worth setting alerts on:
 

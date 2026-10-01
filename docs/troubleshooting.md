@@ -1,6 +1,6 @@
 ---
 title: Troubleshooting
-nav_order: 11
+nav_order: 12
 ---
 
 # Troubleshooting
@@ -63,7 +63,11 @@ A value was encrypted with a root key the application doesn't know about:
 
 ## "Encrypted value is corrupted or has an unsupported format"
 
-The column contains something that isn't an encrypted value, usually plaintext written before the column was marked as encrypted. [Encrypting a column that already has data](encrypting-properties#encrypting-a-column-that-already-has-data) shows how to migrate it.
+The column contains something that isn't an encrypted value. Usually that's plaintext written before the column was marked as encrypted, or a value encrypted by your previous code. [Migrating existing data](migrating) shows how to read those values and migrate them. If you already use a legacy decryptor, it returned `null` for this value, so check that it recognizes all of your old formats.
+
+## "Legacy decryptor failed to decrypt value of '...'"
+
+Your `ILegacyDecryptor` threw for a value that isn't in the library's format. The inner exception has the details. Return `null` instead of throwing for values your decryptor doesn't recognize.
 
 ## "Encryption services are not registered"
 

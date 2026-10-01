@@ -21,6 +21,7 @@ Encrypt sensitive columns in your EF Core application. You mark a property with 
 - **More than strings.** It handles `byte[]`, enums, dates, value objects and properties of complex types.
 - **You choose where keys come from.** Use a static key from your configuration, AWS KMS, or plug in your own key management service.
 - **Keys can be rotated without downtime.** Old values stay readable, and you can re-encrypt them in the background.
+- **Existing data can move over without downtime.** Values encrypted by your previous code, or still in plaintext, stay readable while they're migrated in the background.
 - **You can still look rows up by encrypted values.** Add a blind index and `Where(x => x.Email == email)` works, using a database index.
 - **Query mistakes are caught.** A LINQ query that compares an encrypted column throws instead of silently returning nothing.
 - **It's ready for production.** A health check and OpenTelemetry metrics and traces are built in.
@@ -34,6 +35,7 @@ Encrypt sensitive columns in your EF Core application. You mark a property with 
 - [Key management](https://starushykart.github.io/ef-core-encryption/key-management): rotation, re-encryption and moving to another KMS key
 - [Queries](https://starushykart.github.io/ef-core-encryption/queries): what you can and can't query on encrypted columns
 - [Blind indexes](https://starushykart.github.io/ef-core-encryption/blind-indexes): looking up rows by an encrypted value
+- [Migrating existing data](https://starushykart.github.io/ef-core-encryption/migrating): from your own encryption, or from plaintext, without downtime
 - [Health check and OpenTelemetry](https://starushykart.github.io/ef-core-encryption/observability)
 - [How it works](https://starushykart.github.io/ef-core-encryption/how-it-works): the key hierarchy, the value format and what it protects against
 - [Troubleshooting](https://starushykart.github.io/ef-core-encryption/troubleshooting)
