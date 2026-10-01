@@ -14,12 +14,22 @@ namespace EntityFrameworkCore.Encrypted.Common.Keys;
 /// root keys from <see cref="IRootKeyProvider"/> and data keys derived from them with HKDF.
 /// Only the active root key is loaded eagerly; other root keys are loaded when a value encrypted with them is read.
 /// </summary>
-internal sealed class DataKeyRing(IRootKeyProvider rootKeyProvider, EncryptionSettings settings, ILogger<DataKeyRing> logger) : IDisposable
+internal sealed class DataKeyRing(
+    IRootKeyProvider rootKeyProvider,
+    EncryptionSettings settings,
+    ILogger<DataKeyRing> logger,
+    ILegacyDecryptor? legacyDecryptor = null) : IDisposable
 {
     private readonly ConcurrentDictionary<Type, Lazy<Task<ContextKeys>>> _contexts = new();
     private readonly ConcurrentDictionary<Type, Lazy<Task<IndexKeys>>> _indexKeys = new();
     private readonly ConcurrentDictionary<Type, bool> _usesBlindIndexes = new();
     private readonly ConcurrentBag<Action> _onDispose = [];
+
+    /// <summary>Reads stored values that aren't in the library's format, while migrating to it.</summary>
+    public ILegacyDecryptor? LegacyDecryptor => legacyDecryptor;
+
+    /// <summary>Data key version that encrypts new values: stored values never have a higher one, unless written by a newer deployment.</summary>
+    public uint DataKeyVersion => settings.DataKeyVersion;
 
     public async Task InitializeAsync(Type contextType, CancellationToken cancellationToken)
     {

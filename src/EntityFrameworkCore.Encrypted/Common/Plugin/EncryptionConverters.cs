@@ -86,6 +86,10 @@ internal sealed class StringEncryptionConverter(FieldEncryptor encryptor)
 
     internal static string Decrypt(FieldEncryptor encryptor, string value)
     {
+        // written before the library was used: only while migrating with a legacy decryptor
+        if (encryptor.TryDecryptLegacy(value, out var legacy))
+            return legacy!;
+
         // decoded length is at most 3/4 of the Base64 length; the plaintext is 35 bytes shorter than the envelope
         var maxEnvelopeLength = value.Length / 4 * 3;
         var length = maxEnvelopeLength * 2;
@@ -122,7 +126,7 @@ internal sealed class StringEncryptionConverter(FieldEncryptor encryptor)
 internal sealed class BinaryEncryptionConverter(FieldEncryptor encryptor)
     : ValueConverter<byte[], byte[]>(
         x => encryptor.Encrypt(x),
-        x => encryptor.Decrypt(x)), IEncryptionConverter
+        x => encryptor.DecryptStored(x)), IEncryptionConverter
 {
     public FieldEncryptor Encryptor => encryptor;
 
@@ -152,7 +156,7 @@ internal sealed class ComposedStringEncryptionConverter<TModel>(ValueConverter c
 internal sealed class ComposedBinaryEncryptionConverter<TModel>(ValueConverter conversion, FieldEncryptor encryptor)
     : ValueConverter<TModel, byte[]>(
         x => encryptor.Encrypt((byte[])conversion.ConvertToProvider(x)!),
-        x => (TModel)conversion.ConvertFromProvider(encryptor.Decrypt(x))!), IEncryptionConverter
+        x => (TModel)conversion.ConvertFromProvider(encryptor.DecryptStored(x))!), IEncryptionConverter
 {
     public FieldEncryptor Encryptor => encryptor;
 

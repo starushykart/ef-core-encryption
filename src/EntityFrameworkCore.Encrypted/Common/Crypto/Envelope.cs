@@ -57,6 +57,10 @@ internal static class Envelope
         return envelope;
     }
 
+    /// <summary>Long enough and with the format byte: in the library's format, unless written by other code by chance.</summary>
+    public static bool HasHeader(ReadOnlySpan<byte> envelope)
+        => envelope.Length >= Overhead && envelope[0] == FormatVersion;
+
     public static KeyId ReadKeyId(ReadOnlySpan<byte> envelope)
     {
         if (envelope.Length < Overhead || envelope[0] != FormatVersion)

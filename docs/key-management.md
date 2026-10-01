@@ -111,6 +111,7 @@ It's designed to run while your app is serving traffic:
 - **It never overwrites newer data.** If your app updates a value while re-encryption is running, that update wins. It's counted as skipped, because your app already encrypted it with the current key.
 - **You can stop and restart it.** Values that are already done are skipped next time.
 - **Bad values are left alone.** Anything that can't be decrypted is counted as invalid and left untouched.
+- **Old data is migrated too.** With a [legacy decryptor](migrating), values written by your previous code (or plaintext) are re-encrypted into the library's format.
 - **Transient errors are retried**, using your context's execution strategy.
 
 ## Retiring an old key

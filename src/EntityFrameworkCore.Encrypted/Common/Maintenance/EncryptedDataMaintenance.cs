@@ -1,4 +1,5 @@
 using System.Data.Common;
+using System.Text;
 using EntityFrameworkCore.Encrypted.Common.Crypto;
 using EntityFrameworkCore.Encrypted.Common.Diagnostics;
 using EntityFrameworkCore.Encrypted.Common.Exceptions;
@@ -109,10 +110,19 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
                     if (TryReadKeyId(column, value) == active)
                         continue;
 
-                    if (TryReEncrypt(table, column, value) is { } reEncryptedValue)
+                    if (TryReEncrypt(table, column, value) is var (reEncryptedValue, index))
+                    {
+                        // reEncryptedValue is never null here: null results don't match the pattern
                         pending.Add(new Update(table, column.Name, column.Name, keys, value, reEncryptedValue));
+
+                        // runs after the value update in the same transaction: matches only if that one did
+                        if (index != null)
+                            pending.Add(new Update(table, column.Index!.Column, column.Name, keys, reEncryptedValue, index, Counted: false));
+                    }
                     else
+                    {
                         invalid++;
+                    }
 
                     if (pending.Count >= batchSize)
                         await FlushAsync();
@@ -199,11 +209,11 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
     {
         try
         {
-            var plaintext = column.Converter.Encryptor.Decrypt(column.Converter.ToEnvelope(value));
+            var plaintext = DecryptStored(column, value, out _);
 
             try
             {
-                return column.Index!.Indexer.ComputeFromPlaintext(plaintext, ((ValueConverter)column.Converter).ProviderClrType == typeof(string));
+                return ComputeIndex(column, plaintext);
             }
             finally
             {
@@ -217,16 +227,20 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
         }
     }
 
-    private object? TryReEncrypt(EncryptedTable table, EncryptedColumn column, object value)
+    /// <returns>
+    /// The value encrypted with the active key, and for a legacy value with a blind index its index: legacy values
+    /// can't be found by it until they are migrated.
+    /// </returns>
+    private (object Value, byte[]? Index)? TryReEncrypt(EncryptedTable table, EncryptedColumn column, object value)
     {
         try
         {
-            var encryptor = column.Converter.Encryptor;
-            var plaintext = encryptor.Decrypt(column.Converter.ToEnvelope(value));
+            var plaintext = DecryptStored(column, value, out var legacy);
 
             try
             {
-                return column.Converter.FromEnvelope(encryptor.Encrypt(plaintext));
+                var reEncrypted = column.Converter.FromEnvelope(column.Converter.Encryptor.Encrypt(plaintext));
+                return (reEncrypted, legacy && column.Index != null ? ComputeIndex(column, plaintext) : null);
             }
             finally
             {
@@ -240,11 +254,34 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
         }
     }
 
+    /// <summary>Plaintext of a stored value (UTF-8 for text): in the library's format, or read with the legacy decryptor.</summary>
+    private static byte[] DecryptStored(EncryptedColumn column, object value, out bool legacy)
+    {
+        var encryptor = column.Converter.Encryptor;
+        legacy = true;
+
+        switch (value)
+        {
+            case string text when encryptor.TryDecryptLegacy(text, out var legacyText):
+                return Encoding.UTF8.GetBytes(legacyText!);
+
+            // copy: the decryptor may return the stored array, which is still needed and the plaintext is cleared
+            case byte[] binary when encryptor.TryDecryptLegacy(binary, out var legacyBinary):
+                return (byte[])legacyBinary!.Clone();
+        }
+
+        legacy = false;
+        return encryptor.Decrypt(column.Converter.ToEnvelope(value));
+    }
+
+    private static byte[] ComputeIndex(EncryptedColumn column, byte[] plaintext)
+        => column.Index!.Indexer.ComputeFromPlaintext(plaintext, ((ValueConverter)column.Converter).ProviderClrType == typeof(string));
+
     private static KeyId? TryReadKeyId(EncryptedColumn column, object value)
     {
         try
         {
-            return Envelope.ReadKeyId(column.Converter.ToEnvelope(value));
+            return column.Converter.Encryptor.TryReadKeyId(column.Converter.ToEnvelope(value));
         }
         catch (Exception ex) when (ex is EntityFrameworkEncryptionException or FormatException or InvalidCastException)
         {
@@ -320,7 +357,7 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
                 }
 
                 await batch.ExecuteNonQueryAsync(ct);
-                updated = batch.BatchCommands.Sum(x => (long)x.RecordsAffected);
+                updated = batch.BatchCommands.Where((_, i) => updates[i].Counted).Sum(x => (long)x.RecordsAffected);
             }
             else
             {
@@ -331,12 +368,13 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
                     command.CommandText = update.ToSql(sql);
                     update.AddParameters(command.Parameters, command.CreateParameter, sql);
 
-                    updated += await command.ExecuteNonQueryAsync(ct);
+                    var affected = await command.ExecuteNonQueryAsync(ct);
+                    updated += update.Counted ? affected : 0;
                 }
             }
 
             await transaction.CommitAsync(ct);
-            return (updated, updates.Count - updated);
+            return (updated, updates.Count(x => x.Counted) - updated);
         }, cancellationToken);
 
     private sealed record EncryptedColumn(string Name, IEncryptionConverter Converter, BlindIndexColumn? Index);
@@ -404,7 +442,9 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
     /// </summary>
     /// <param name="Column">Column to set: the encrypted value itself, or its blind index.</param>
     /// <param name="CheckedColumn">Encrypted column that must still contain <paramref name="OldValue"/>.</param>
-    private sealed record Update(EncryptedTable Table, string Column, string CheckedColumn, object[] Keys, object OldValue, object NewValue)
+    /// <param name="Counted">Counted in the result: <c>false</c> for blind indexes set along with re-encrypted values.</param>
+    private sealed record Update(
+        EncryptedTable Table, string Column, string CheckedColumn, object[] Keys, object OldValue, object NewValue, bool Counted = true)
     {
         public string ToSql(ISqlGenerationHelper sql)
         {
