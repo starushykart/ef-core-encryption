@@ -14,6 +14,7 @@ namespace EntityFrameworkCore.Encrypted.Common.Keys;
 /// </summary>
 internal sealed class StaticRootKeyProvider(
     IReadOnlyDictionary<int, byte[]> keys,
+    int activeId,
     IRootKeyStore store,
     TimeProvider timeProvider,
     EncryptionSettings settings,
@@ -24,7 +25,7 @@ internal sealed class StaticRootKeyProvider(
     private const int TagSize = 16;
     private static readonly byte[] AssociatedData = Encoding.UTF8.GetBytes("efenc:index-key");
 
-    private int ActiveId => keys.Keys.Max();
+    private int ActiveId => activeId;
 
     public Task<RootKey> GetActiveRootKeyAsync(Type dbContextType, CancellationToken cancellationToken)
         => Task.FromResult(new RootKey(ActiveId, keys[ActiveId]));

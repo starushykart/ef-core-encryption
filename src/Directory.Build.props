@@ -18,6 +18,8 @@
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
         <!-- documenting only the parameters that need it -->
         <NoWarn>$(NoWarn);CS1573</NoWarn>
+        <!-- packages depend on the lowest version they need, not on the versions pinned for tests and samples -->
+        <CentralPackageTransitivePinningEnabled>false</CentralPackageTransitivePinningEnabled>
     </PropertyGroup>
 
     <ItemGroup>

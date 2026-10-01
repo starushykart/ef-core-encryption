@@ -9,7 +9,7 @@ using Xunit;
 
 namespace EntityFrameworkCore.Encrypted.Tests.Sqlite;
 
-/// <summary>Re-encryption reads and writes on two connections: with a rollback journal, SQLite locks the whole file.</summary>
+/// <summary>With a rollback journal, SQLite locks the whole file while a table is read.</summary>
 public sealed class SqliteJournalModeTests : IAsyncDisposable
 {
     private readonly string _path = Path.Combine(Path.GetTempPath(), $"efenc_journal_{Guid.NewGuid():N}.db");

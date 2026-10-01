@@ -41,7 +41,7 @@ At its core the library encrypts `string` and `byte[]`. Anything that EF Core ca
 | your own value objects | Base64 text or binary | `HasConversion(...).IsEncrypted()` |
 | properties of complex types | as above | `[Encrypted]` inside the complex type |
 
-Your conversion always runs first, and its result is what gets encrypted. Any of these can also get a [blind index](blind-indexes), so you can look rows up by them.
+Your conversion always runs first, and its result is what gets encrypted. Any of these, except properties of complex types, can also get a [blind index](blind-indexes), so you can look rows up by them.
 
 ### Enums, dates and numbers
 
@@ -131,6 +131,7 @@ The same value encrypts differently every time. A few things depend on the datab
 - **Concurrency tokens.** The stored value changes on every save, so every update would look like a conflict.
 - **Columns with a unique index.** Uniqueness wouldn't be enforced. To keep values unique, check with a [blind index](blind-indexes) lookup before saving.
 - **Seed data (`HasData`).** It's written into migrations without keys, and differently each time. Seed encrypted values from code on startup instead.
+- **A column shared by an encrypted and a plain property**, for example two types in a TPH hierarchy mapping different properties to one column. Encrypt both properties, or give them their own columns.
 
 A model passed with `UseModel(...)` isn't supported either. That includes compiled models from `dotnet ef dbcontext optimize`. Encrypted properties are configured while the model is built, so the first query or save throws instead of storing plaintext.
 

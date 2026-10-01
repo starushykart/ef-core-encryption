@@ -18,6 +18,7 @@ public sealed class EncryptionBuilder
     private ServiceDescriptor? _rootKeyProvider;
     private ServiceDescriptor? _legacyDecryptor;
     private EncryptionSettings _settings = new();
+    private int? _activeStaticKeyId;
 
     internal EncryptionBuilder(IServiceCollection services)
         => Services = services;
@@ -27,7 +28,7 @@ public sealed class EncryptionBuilder
 
     /// <summary>
     /// Uses a static AES-256 root key, shared by all encrypted contexts. Call again with a higher <paramref name="id"/>
-    /// to rotate: the highest id encrypts new values, the others only decrypt.
+    /// to rotate: the highest id encrypts new values (unless <see cref="UseActiveKey"/> says otherwise), the others only decrypt.
     /// </summary>
     public EncryptionBuilder UseKey(byte[] key, int id = 1)
     {
@@ -40,6 +41,17 @@ public sealed class EncryptionBuilder
 
         // copy: the key ring zeroes its keys on dispose and must not touch the caller's array
         _staticKeys[id] = (byte[])key.Clone();
+        return this;
+    }
+
+    /// <summary>
+    /// Encrypts new values with the static key <paramref name="id"/> instead of the one with the highest id. For rolling
+    /// deployments: first deploy the new key with the current one still active, so every instance can read values
+    /// encrypted with it, then remove this call in the next deployment.
+    /// </summary>
+    public EncryptionBuilder UseActiveKey(int id)
+    {
+        _activeStaticKeyId = id;
         return this;
     }
 
@@ -155,6 +167,9 @@ public sealed class EncryptionBuilder
         if (configured > 1)
             throw new EntityFrameworkEncryptionException("Only one root key source can be configured: UseKey(...) or UseKeyWrapper(...)");
 
+        if (_activeStaticKeyId is { } active && !_staticKeys.ContainsKey(active))
+            throw new EntityFrameworkEncryptionException($"UseActiveKey({active}): no static key with id {active} is configured with UseKey(...)");
+
         Services.TryAddSingleton(_settings);
 
         if (_legacyDecryptor != null)
@@ -168,7 +183,8 @@ public sealed class EncryptionBuilder
         else if (_staticKeys.Count > 0)
         {
             var keys = new Dictionary<int, byte[]>(_staticKeys);
-            Services.TryAddSingleton<IRootKeyProvider>(sp => ActivatorUtilities.CreateInstance<StaticRootKeyProvider>(sp, keys));
+            var activeId = _activeStaticKeyId ?? keys.Keys.Max();
+            Services.TryAddSingleton<IRootKeyProvider>(sp => ActivatorUtilities.CreateInstance<StaticRootKeyProvider>(sp, keys, activeId));
         }
         else
         {

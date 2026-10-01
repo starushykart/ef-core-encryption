@@ -57,15 +57,18 @@ db.Customers.Select(x => Mask(x.Email));
 | sorting | `OrderBy(x => x.Email)`, `ThenBy(x => x.Email)` |
 | grouping | `GroupBy(x => x.Email)` |
 | set operations | `Select(x => x.Email).Distinct()`, `Union`, `Except`, `Intersect` |
-| aggregates | `Max(x => x.Email)`, `Min(...)` |
+| aggregates | `Max(x => x.Email)`, `Min(...)`, `Sum(x => x.Salary)`, `Average(...)` |
 | joins on encrypted columns | `Join(..., x => x.Email, ...)` |
 | filtering or sorting a projection | `Select(x => new { x.Id, x.Email }).Where(a => a.Email == email)`, also DTOs, records and `let` |
-| values computed from an encrypted column | `(x.Email ?? "") == email`, `x.Email + "" == email`, `OrderBy(x => x.Email ?? "")` |
+| values computed from an encrypted column | `(x.Email ?? "") == email`, `x.Email + "" == email`, `OrderBy(x => x.Email ?? "")`, `x.Salary * 12 > limit`, `Math.Abs(x.Balance)` |
+| encrypted bools as conditions | `Where(x => x.IsVip)`, `!x.IsVip`, `Count(x => x.IsVip)`, `x.IsVip ? 1 : 0` |
 | subqueries returning an encrypted value | `Where(x => x.Name == db.Users.Select(u => u.Email).First())` |
 | aggregates over groups | `GroupBy(x => x.Country, x => x.Email).Select(g => g.Max())` |
 | `EF.Property` | `Where(x => EF.Property<string>(x, "Email") == email)` |
 
 Filter before you project, or filter by columns that aren't encrypted. That also covers query builders that put filters on projections, such as OData or GraphQL over AutoMapper's `ProjectTo`.
+
+Global query filters (`HasQueryFilter`) follow the same rules, and are checked by the first query of the context. Only null checks work there: a filter isn't rewritten to use a blind index.
 
 Raw SQL (`FromSql`, `ExecuteSql`) isn't checked, so be careful there.
 

@@ -150,6 +150,34 @@ public abstract class LegacyMigrationProviderTests(ITestOutputHelper helper) : I
     }
 
     [Fact]
+    public async Task Should_read_binary_plaintext_that_looks_like_a_newer_data_key_version()
+    {
+        // the format byte, root key id 1 and data key version 5, while version 0 is configured
+        byte[] photo = [1, 0, 1, 0, 0, 0, 5, ..Enumerable.Repeat((byte)7, 40)];
+
+        await using (var plain = CreatePlainContext())
+        {
+            plain.Add(new PlainCustomer { Id = Guid.NewGuid(), Name = "x", Photo = photo, Status = "Basic" });
+            await plain.SaveChangesAsync();
+        }
+
+        await using var provider = Build(LegacyDecryptor.Plaintext);
+
+        (await ReadAllAsync(provider)).Should().ContainSingle().Which.Photo.Should().Equal(photo);
+    }
+
+    [Fact]
+    public async Task Should_read_values_of_a_newer_data_key_version_with_the_plaintext_decryptor()
+    {
+        await using var newer = Build(LegacyDecryptor.Plaintext, dataKeyVersion: 1);
+        var customer = await AddAsync(newer, new LegacyCustomer { Id = Guid.NewGuid(), Name = "new", Email = "new@example.com", Photo = [1, 2], Status = Level.Premium });
+
+        await using var older = Build(LegacyDecryptor.Plaintext);
+
+        (await ReadAllAsync(older)).Should().ContainSingle().Which.Should().BeEquivalentTo(customer);
+    }
+
+    [Fact]
     public async Task Should_migrate_plaintext_columns()
     {
         var plain = await SeedLegacyAsync(count: 5, encrypt: false);

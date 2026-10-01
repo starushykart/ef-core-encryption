@@ -10,7 +10,7 @@ public static class EncryptionBuilderExtensions
 {
     /// <summary>
     /// Envelope encryption with AWS KMS: each encrypted context gets a root key generated and wrapped by KMS and
-    /// stored wrapped in its <c>__EncryptionKeys</c> table. Startup costs one KMS <c>Decrypt</c> per context.
+    /// stored wrapped in its <c>__EncryptionKeys</c> table. Startup costs one KMS <c>Decrypt</c> per context, two with blind indexes.
     /// </summary>
     /// <remarks>
     /// Uses <see cref="IAmazonKeyManagementService"/> from dependency injection when registered,

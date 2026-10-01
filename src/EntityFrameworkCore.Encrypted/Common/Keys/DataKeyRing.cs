@@ -25,6 +25,9 @@ internal sealed class DataKeyRing(
     private readonly ConcurrentDictionary<Type, bool> _usesBlindIndexes = new();
     private readonly ConcurrentBag<Action> _onDispose = [];
 
+    // data key versions a newer deployment may use: stored values can't fill the data key cache with any version
+    private const uint NewerDataKeyVersions = 1024;
+
     /// <summary>Reads stored values that aren't in the library's format, while migrating to it.</summary>
     public ILegacyDecryptor? LegacyDecryptor => legacyDecryptor;
 
@@ -131,12 +134,22 @@ internal sealed class DataKeyRing(
         if (keyId.RootKeyId == 0)
             throw new EntityFrameworkEncryptionException($"Root key 0 of {contextType.Name} not found");
 
+        if (keyId.DataKeyVersion > (ulong)settings.DataKeyVersion + NewerDataKeyVersions)
+            throw new EntityFrameworkEncryptionException(
+                $"Data key version {keyId.DataKeyVersion} of {contextType.Name} is far newer than the configured version {settings.DataKeyVersion}");
+
         // encrypted with a root key this instance hasn't loaded: an older one, or a newer one rotated by another instance
         if (!keys.HasRootKey(keyId.RootKeyId))
             LoadRootKey(contextType, keys, keyId.RootKeyId, "on_demand");
 
         return keys.GetDataKey(keyId);
     }
+
+    /// <summary>Whether a value can be decrypted without loading another root key on demand.</summary>
+    public bool HasDecryptionKey(Type contextType, KeyId keyId)
+        => keyId.RootKeyId != 0
+           && keyId.DataKeyVersion <= (ulong)settings.DataKeyVersion + NewerDataKeyVersions
+           && GetContextKeys(contextType).HasRootKey(keyId.RootKeyId);
 
     private void LoadRootKey(Type contextType, ContextKeys keys, ushort rootKeyId, string trigger)
         => LoadRootKeyAsync(contextType, keys, rootKeyId, trigger).GetAwaiter().GetResult();

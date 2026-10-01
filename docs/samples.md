@@ -164,4 +164,4 @@ The root keys are now wrapped by the new KMS key, and none of the stored values 
 docker compose down
 ```
 
-LocalStack keeps its keys in `dev-env/localstack-data`. If you delete that folder, the KMS key used by the sample is recreated, but anything encrypted with the old one can't be read anymore. That's a good, harmless way to see what losing a key looks like.
+This removes the database and the LocalStack KMS key together. LocalStack's free edition doesn't keep keys across restarts, so if you restart only the LocalStack container, the KMS key is recreated and the root keys in the database can't be unwrapped anymore. That's a good, harmless way to see what losing a key looks like; `docker compose down` gets you back to a clean state.

@@ -85,7 +85,7 @@ dotnet ef migrations add AddEncryption
 dotnet ef database update
 ```
 
-You'll notice two things in the migration. Encrypted strings become `text` columns, because they're stored as Base64, and binary values stay binary. There's also a new `__EncryptionKeys` table, which is where wrapped keys live once you use a key management service.
+You'll notice two things in the migration. Encrypted strings become `text` columns, because they're stored as Base64, and binary values stay binary. There's also a new `__EncryptionKeys` table, which holds the wrapped root keys when you use a key management service, and the blind index key if you use [blind indexes](blind-indexes).
 
 If you have a design-time factory, it only needs to call `UseEncryption()` too. The design-time tools don't need any keys:
 

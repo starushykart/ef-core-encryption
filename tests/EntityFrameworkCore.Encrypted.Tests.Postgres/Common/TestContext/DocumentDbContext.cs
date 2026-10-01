@@ -20,6 +20,8 @@ public sealed class DocumentDbContext(DbContextOptions<DocumentDbContext> option
             e.Property(x => x.Text).IsEncrypted();
             e.Property(x => x.Blob).IsEncrypted();
             e.Property(x => x.Other).IsEncrypted();
+            e.Property(x => x.Amount).HasConversion<string>().IsEncrypted();
+            e.Property(x => x.Flag).HasConversion<string>().IsEncrypted();
             e.Property(x => x.RenamedColumn).IsEncrypted("Documents.OldName").HasColumnName("NewName");
         });
 
@@ -53,6 +55,8 @@ public sealed class Document
     public byte[]? Blob { get; set; }
     public string? Other { get; set; }
     public string? RenamedColumn { get; set; }
+    public int Amount { get; set; }
+    public bool Flag { get; set; }
 
     /// <summary>Not encrypted.</summary>
     public string? Title { get; set; }

@@ -40,6 +40,30 @@ public class KeyRotationTests
     }
 
     [Fact]
+    public void Should_encrypt_with_the_active_static_key_while_a_new_one_rolls_out()
+    {
+        var oldKey = RandomNumberGenerator.GetBytes(32);
+        var newKey = RandomNumberGenerator.GetBytes(32);
+        using var rollingOut = DocumentDbContext.BuildProvider(x => x.UseKey(oldKey).UseKey(newKey, id: 2).UseActiveKey(1));
+        using var rolledOut = DocumentDbContext.BuildProvider(x => x.UseKey(oldKey).UseKey(newKey, id: 2));
+
+        var value = Encrypt(DocumentDbContext.GetConverter(rollingOut, nameof(Document.Blob)), [1]);
+
+        RootKeyId(value).Should().Be(1);
+        RootKeyId(Encrypt(DocumentDbContext.GetConverter(rolledOut, nameof(Document.Blob)), [2])).Should().Be(2);
+        Decrypt(DocumentDbContext.GetConverter(rollingOut, nameof(Document.Blob)), Encrypt(DocumentDbContext.GetConverter(rolledOut, nameof(Document.Blob)), [3]))
+            .Should().Equal(3);
+    }
+
+    [Fact]
+    public void Should_reject_an_active_static_key_that_is_not_configured()
+    {
+        var act = () => DocumentDbContext.BuildProvider(x => x.UseKey(RandomNumberGenerator.GetBytes(32)).UseActiveKey(2));
+
+        act.Should().Throw<EntityFrameworkEncryptionException>().WithMessage("UseActiveKey(2)*");
+    }
+
+    [Fact]
     public void Should_throw_when_root_key_of_value_does_not_exist()
     {
         using var withTwoKeys = DocumentDbContext.BuildProvider(x => x.UseKey(RandomNumberGenerator.GetBytes(32)).UseKey(RandomNumberGenerator.GetBytes(32), id: 2));

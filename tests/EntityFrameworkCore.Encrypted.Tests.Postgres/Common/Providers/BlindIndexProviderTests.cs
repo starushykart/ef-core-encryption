@@ -66,6 +66,30 @@ public abstract class BlindIndexProviderTests(ITestOutputHelper helper) : IAsync
         (await db.People.Where(x => emails.Contains(x.Email)).Select(x => x.Name).ToListAsync()).Should().BeEquivalentTo("jane", "max");
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("+1 555 0199")]
+    public async Task Should_update_blind_index_when_owned_entity_is_replaced(string? phone)
+    {
+        var jane = (await AddPeopleAsync(_provider))[0];
+
+        await using (var scope = _provider.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BlindIndexDbContext>();
+            var person = await db.People.SingleAsync(x => x.Id == jane.Id);
+            person.Contact = new Contact { Phone = phone };
+            await db.SaveChangesAsync();
+        }
+
+        await using var verify = _provider.CreateAsyncScope();
+        var people = verify.ServiceProvider.GetRequiredService<BlindIndexDbContext>().People;
+
+        (await people.CountAsync(x => x.Contact!.Phone == "+1 555 0100")).Should().Be(0);
+
+        if (phone != null)
+            (await people.SingleAsync(x => x.Contact!.Phone == phone)).Name.Should().Be("jane");
+    }
+
     [Fact]
     public async Task Should_update_blind_index_when_value_changes()
     {
