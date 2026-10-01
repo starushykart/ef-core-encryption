@@ -23,5 +23,6 @@
     <Project Path="tests/EntityFrameworkCore.Encrypted.Tests.AwsKms/EntityFrameworkCore.Encrypted.Tests.AwsKms.csproj" />
     <Project Path="tests/EntityFrameworkCore.Encrypted.Tests.Postgres/EntityFrameworkCore.Encrypted.Tests.Postgres.csproj" />
     <Project Path="tests/EntityFrameworkCore.Encrypted.Tests.Sqlite/EntityFrameworkCore.Encrypted.Tests.Sqlite.csproj" />
+    <Project Path="tests/EntityFrameworkCore.Encrypted.Tests.SqlServer/EntityFrameworkCore.Encrypted.Tests.SqlServer.csproj" />
   </Folder>
 </Solution>

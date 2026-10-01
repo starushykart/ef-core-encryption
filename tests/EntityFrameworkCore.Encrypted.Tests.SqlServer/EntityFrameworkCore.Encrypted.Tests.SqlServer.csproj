@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
+        <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
+        <PackageReference Include="Testcontainers.MsSql" />
+        <PackageReference Include="xunit.v3" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- shared test helpers: provider scenarios, in-memory key wrapper, logging -->
+        <ProjectReference Include="..\EntityFrameworkCore.Encrypted.Tests.Postgres\EntityFrameworkCore.Encrypted.Tests.Postgres.csproj" />
+    </ItemGroup>
+
+</Project>

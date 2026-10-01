@@ -29,33 +29,83 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
         return queryExpression;
     }
 
+    /// <summary>
+    /// Encrypted properties resolved through the metadata path of an expression, so occurrences of the same CLR type
+    /// (owned types, complex types used by several properties) are distinguished: x.Billing.Street vs x.Shipping.Street.
+    /// </summary>
     private sealed class EncryptedProperties
     {
-        private readonly Dictionary<Type, Dictionary<string, IReadOnlyProperty>> _byType = [];
+        // CLR type -> entity, owned and complex types mapped to it
+        private readonly Dictionary<Type, List<IReadOnlyTypeBase>> _types = [];
 
-        public bool IsEmpty => _byType.Count == 0;
+        public bool IsEmpty { get; private set; } = true;
 
         public static EncryptedProperties Create(IModel model)
         {
             var result = new EncryptedProperties();
 
             foreach (var entityType in model.GetEntityTypes())
-            foreach (var property in entityType.GetProperties())
-            {
-                if (property.GetValueConverter() is not IEncryptionConverter)
-                    continue;
-
-                if (!result._byType.TryGetValue(entityType.ClrType, out var byName))
-                    result._byType[entityType.ClrType] = byName = [];
-
-                byName[property.Name] = property;
-            }
+                result.Add(entityType);
 
             return result;
         }
 
-        public IReadOnlyProperty? Find(Type type, string name)
-            => _byType.TryGetValue(type, out var byName) && byName.TryGetValue(name, out var property) ? property : null;
+        private void Add(IReadOnlyTypeBase type)
+        {
+            if (!_types.TryGetValue(type.ClrType, out var types))
+                _types[type.ClrType] = types = [];
+
+            types.Add(type);
+            IsEmpty &= !type.GetDeclaredProperties().Any(IsEncrypted);
+
+            foreach (var complexProperty in type.GetDeclaredComplexProperties())
+                Add(complexProperty.ComplexType);
+        }
+
+        public IReadOnlyProperty? Find(Expression instance, string name)
+        {
+            if (Resolve(instance) is { } type)
+                return type.FindProperty(name) is { } property && IsEncrypted(property) ? property : null;
+
+            // not traceable to the model (e.g. a lambda parameter of a complex type): encrypted only if it is in every occurrence
+            var candidates = Candidates(instance).Select(x => x.FindProperty(name)).ToList();
+
+            return candidates.Count > 0 && candidates.All(x => x != null && IsEncrypted(x)) ? candidates[0] : null;
+        }
+
+        // entity of a parameter; complex type or owned entity type a member leads to
+        private IReadOnlyTypeBase? Resolve(Expression expression)
+        {
+            if (expression is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.TypeAs } cast)
+                return Single(cast.Type) ?? Resolve(cast.Operand);
+
+            if (expression is MemberExpression { Expression: { } parentExpression } member && Resolve(parentExpression) is { } parent)
+            {
+                return (IReadOnlyTypeBase?)parent.FindComplexProperty(member.Member.Name)?.ComplexType
+                       ?? (parent as IReadOnlyEntityType)?.FindNavigation(member.Member.Name)?.TargetEntityType;
+            }
+
+            return Single(expression.Type);
+        }
+
+        private IReadOnlyTypeBase? Single(Type type)
+            => _types.TryGetValue(type, out var types) && types.Count == 1 ? types[0] : null;
+
+        private IEnumerable<IReadOnlyTypeBase> Candidates(Expression expression)
+        {
+            while (expression is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.TypeAs } cast)
+            {
+                if (_types.TryGetValue(cast.Type, out var castTypes))
+                    return castTypes;
+
+                expression = cast.Operand;
+            }
+
+            return _types.GetValueOrDefault(expression.Type) ?? [];
+        }
+
+        private static bool IsEncrypted(IReadOnlyProperty property)
+            => property.GetValueConverter() is IEncryptionConverter;
     }
 
     private sealed class Visitor(EncryptedProperties properties) : ExpressionVisitor
@@ -185,7 +235,7 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
         }
 
         private static EntityFrameworkEncryptionException Rejected(IReadOnlyProperty property)
-            => new($"{property.DeclaringType.DisplayName()}.{property.Name} is encrypted and can't be compared, searched, " +
+            => new($"{EncryptionConvention.DisplayName(property)} is encrypted and can't be compared, searched, " +
                    "sorted or grouped in a query: the database only sees random ciphertext, so the result would be wrong. " +
                    "Only '== null' and '!= null' are supported; filter by other columns and check the value in memory");
 
@@ -282,10 +332,7 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
 
         // generic code may access the property through an interface or base class cast
         private IReadOnlyProperty? Find(Expression instance, string name)
-            => properties.Find(instance.Type, name)
-               ?? (instance is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.TypeAs } cast
-                   ? properties.Find(cast.Operand.Type, name)
-                   : null);
+            => properties.Find(instance, name);
 
         private static Expression[] KeyParts(Expression body)
             => StripConvert(body) switch
