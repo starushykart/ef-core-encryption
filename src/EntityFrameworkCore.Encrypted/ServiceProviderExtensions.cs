@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace EntityFrameworkCore.Encrypted;
 
+/// <summary>Key management and data maintenance: loading keys, rotation, key usage, re-encryption, rewrapping and blind index rebuilding.</summary>
 public static class ServiceProviderExtensions
 {
     /// <summary>

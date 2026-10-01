@@ -63,13 +63,42 @@ internal sealed partial class EncryptionConvention(DataKeyRing? keyRing, Type co
                 if (HasBlindIndex(property))
                     AddBlindIndex(property, conversion, normalize);
             }
+
+            RejectSeedData(entityType);
         }
+    }
+
+    // seed data is inserted by migrations: values would be encrypted at design time (without keys) into the migration,
+    // differently every time, and blind indexes wouldn't be set
+    private static void RejectSeedData(IConventionEntityType entityType)
+    {
+        var encrypted = entityType.GetDeclaredProperties().Where(x => x.GetValueConverter() is IEncryptionConverter).Select(x => x.Name).ToHashSet();
+
+        if (encrypted.Count > 0
+            && entityType.GetSeedData().Any(row => row.Any(x => x.Value != null && encrypted.Contains(x.Key))))
+            throw new EntityFrameworkEncryptionException(
+                $"{entityType.DisplayName()} has seed data (HasData) for encrypted properties. Seed encrypted values from code " +
+                "with SaveChanges instead, e.g. on startup");
     }
 
     /// <returns>The configured conversion that runs before encryption, if any.</returns>
     private ValueConverter? Encrypt(IConventionProperty property)
     {
         var name = DisplayName(property);
+
+        // the same value encrypts differently every time: the database can't match, reference or compare it
+        if (property.IsKey() || property.IsForeignKey())
+            throw new EntityFrameworkEncryptionException(
+                $"{name} is part of a key or foreign key and can't be encrypted: encrypted values differ every time, " +
+                "so they can't identify or reference rows");
+
+        if (property.IsConcurrencyToken)
+            throw new EntityFrameworkEncryptionException(
+                $"{name} is a concurrency token and can't be encrypted: its stored value changes on every save, so every update would conflict");
+
+        if (property.GetContainingIndexes().Any(x => x.IsUnique))
+            throw new EntityFrameworkEncryptionException(
+                $"{name} is encrypted and can't have a unique index: encrypted values differ every time, so uniqueness wouldn't be enforced");
 
         // the limit would apply to the ciphertext (plaintext + 35 bytes, Base64), not to the value
         if (property.GetMaxLength() != null || property.GetColumnType() is { } columnType && SizedColumnType().IsMatch(columnType))
@@ -110,6 +139,11 @@ internal sealed partial class EncryptionConvention(DataKeyRing? keyRing, Type co
         if (property.DeclaringType is not IConventionEntityType entityType)
             throw new EntityFrameworkEncryptionException(
                 $"{name}: blind indexes aren't supported on properties of complex types");
+
+        // stored as text inside the JSON document, compared as binary: lookups would never match
+        if (entityType.IsMappedToJson())
+            throw new EntityFrameworkEncryptionException(
+                $"{name}: blind indexes aren't supported on types mapped to JSON");
 
         var providerType = conversion?.ProviderClrType ?? property.ClrType;
 

@@ -108,11 +108,13 @@ The result tells you how many values were re-encrypted, how many were skipped an
 It's designed to run while your app is serving traffic:
 
 - **It works in small batches.** Each batch of `batchSize` values gets its own transaction.
-- **It never overwrites newer data.** If your app updates a value while re-encryption is running, that update wins. It's counted as skipped, because your app already encrypted it with the current key.
-- **You can stop and restart it.** Values that are already done are skipped next time.
+- **It never overwrites newer data.** If your app updates or deletes a row while re-encryption is running, the app's change wins. The value is counted as skipped.
+- **You can stop and restart it.** Values that already use the current key aren't touched again, and aren't counted.
 - **Bad values are left alone.** Anything that can't be decrypted is counted as invalid and left untouched.
 - **Old data is migrated too.** With a [legacy decryptor](migrating), values written by your previous code (or plaintext) are re-encrypted into the library's format.
 - **Transient errors are retried**, using your context's execution strategy.
+
+It reads a table on one connection and writes on a second one, so the context has to be configured with a connection string rather than a shared `DbConnection` instance. On SQLite, use WAL mode (`PRAGMA journal_mode=WAL`, the default for databases EF creates): without it, SQLite locks the whole file while a table is read, so the writes go through the reading connection, and your app can't write until the job is done.
 
 ## Retiring an old key
 
@@ -123,6 +125,19 @@ Putting it all together:
 3. Run `ReEncryptAsync`.
 4. Check `GetKeyUsageAsync` and confirm the old key is gone from the list.
 5. With a static key, remove the old one from your configuration. With KMS, the old wrapped root key can just stay in `__EncryptionKeys`, unused.
+
+{: .warning }
+> `GetKeyUsageAsync` only sees the current rows of your tables. Older copies of the data still use the old key:
+> - backups
+> - temporal history tables
+> - change data capture tables
+> - replicas that lag behind
+>
+> The same goes for values outside tables: encrypted properties mapped to views, SQL queries or JSON columns. These are logged as warnings when you run it. Keep the old key for as long as you may need to read any of them. With KMS, that's another reason to simply leave old root keys in place.
+
+### Very large tables
+
+Each value gets a random 96-bit nonce. For a single data key, NIST guidance keeps random nonces below 2³² encryptions (about 4 billion). If a context writes values at that scale, bump `UseDataKeyVersion` from time to time, say every few hundred million writes. That costs nothing and keeps each key well below the limit.
 
 ## Moving to another KMS key
 

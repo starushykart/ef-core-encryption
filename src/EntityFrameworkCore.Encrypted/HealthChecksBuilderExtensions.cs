@@ -4,6 +4,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace EntityFrameworkCore.Encrypted;
 
+/// <summary>Health checks for encryption keys.</summary>
 public static class HealthChecksBuilderExtensions
 {
     /// <summary>

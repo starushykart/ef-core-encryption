@@ -10,5 +10,6 @@ namespace EntityFrameworkCore.Encrypted;
 /// </summary>
 public static class EncryptionInstrumentation
 {
+    /// <summary>Name of the activity source and the meter.</summary>
     public const string Name = "EntityFrameworkCore.Encrypted";
 }

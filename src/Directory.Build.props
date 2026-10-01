@@ -14,6 +14,10 @@
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackageProjectUrl>https://github.com/starushykart/ef-core-encryption</PackageProjectUrl>
         <PackageTags>efcore;entity-framework-core;encryption;aes-gcm;kms</PackageTags>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+        <!-- documenting only the parameters that need it -->
+        <NoWarn>$(NoWarn);CS1573</NoWarn>
     </PropertyGroup>
 
     <ItemGroup>

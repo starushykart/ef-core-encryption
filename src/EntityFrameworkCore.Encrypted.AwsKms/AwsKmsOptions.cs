@@ -2,6 +2,7 @@ using EntityFrameworkCore.Encrypted.Common.Exceptions;
 
 namespace EntityFrameworkCore.Encrypted.AwsKms;
 
+/// <summary>AWS KMS key and encryption context used to wrap root keys. See <c>UseAwsKms</c>.</summary>
 public sealed class AwsKmsOptions
 {
     /// <summary>KMS key (ARN, id or alias) that wraps new root keys. Existing root keys unwrap with the key that wrapped them.</summary>

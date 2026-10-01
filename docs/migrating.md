@@ -92,7 +92,7 @@ public sealed class Aes256CbcLegacyDecryptor(IConfiguration configuration) : ILe
 The [static key sample](samples#migrating-from-plain-aes-256) runs this migration end to end.
 
 {: .note }
-CBC isn't authenticated, so the decryptor can't be completely sure a value is its own. The padding and UTF-8 checks reject almost everything else. To be safe, don't change `UseDataKeyVersion` while the migration is running.
+CBC isn't authenticated, so the decryptor can't be completely sure a value is its own. The padding and UTF-8 checks reject almost everything else, and values that look like the library's format are always decrypted by the library first.
 
 ## Columns that were stored in plaintext
 
@@ -131,7 +131,7 @@ The `efcore.encryption.legacy.values` metric counts values read through the lega
 
 ## How the formats are told apart
 
-Every value in the library's format starts with a small header: a format byte, the key id and the data key version. A value counts as the library's format only if that header is there and its data key version is one you've configured. Everything else is passed to your decryptor. Old ciphertext has random bytes in those positions, so it's mistaken for the library's format about once in 2⁴⁰ values.
+Every value in the library's format starts with a small header: a format byte, the key id and the data key version. A value counts as the library's format only if that header is there, with a root key id of at least 1 and a data key version you've configured. If its data key version is newer (a newer deployment rolling out), the library tries to decrypt it first and only asks your decryptor if that fails. Everything else is passed to your decryptor. Old ciphertext has random bytes in those positions, so it's mistaken for the library's format about once in 2⁴⁰ values.
 
 One rule stays strict: a value in the library's format that fails to decrypt is never handed to the legacy decryptor. Tampering is still reported as tampering. The plaintext decryptor doesn't turn a modified ciphertext into "plaintext".
 

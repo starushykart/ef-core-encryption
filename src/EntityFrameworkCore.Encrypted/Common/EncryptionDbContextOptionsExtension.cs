@@ -1,3 +1,4 @@
+using EntityFrameworkCore.Encrypted.Common.Exceptions;
 using EntityFrameworkCore.Encrypted.Common.Keys;
 using EntityFrameworkCore.Encrypted.Common.Plugin;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -32,8 +33,15 @@ internal sealed class EncryptionDbContextOptionsExtension(DataKeyRing? keyRing) 
         DecorateModelCacheKeyFactory(services);
     }
 
+    // a model passed with UseModel (e.g. a compiled model) isn't built with the encryption conventions:
+    // its encrypted properties would be stored in plaintext
     public void Validate(IDbContextOptions options)
-    { }
+    {
+        if (options.FindExtension<CoreOptionsExtension>()?.Model != null)
+            throw new EntityFrameworkEncryptionException(
+                "UseEncryption() can't be combined with UseModel(...), e.g. a compiled model: encrypted properties are " +
+                "configured when the model is built");
+    }
 
     private static void DecorateModelCacheKeyFactory(IServiceCollection services)
     {

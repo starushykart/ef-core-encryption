@@ -127,6 +127,10 @@ internal sealed class DataKeyRing(
     {
         var keys = GetContextKeys(contextType);
 
+        // root key ids start at 1; id 0 in the key store is the blind index key
+        if (keyId.RootKeyId == 0)
+            throw new EntityFrameworkEncryptionException($"Root key 0 of {contextType.Name} not found");
+
         // encrypted with a root key this instance hasn't loaded: an older one, or a newer one rotated by another instance
         if (!keys.HasRootKey(keyId.RootKeyId))
             LoadRootKey(contextType, keys, keyId.RootKeyId, "on_demand");
@@ -184,7 +188,8 @@ internal sealed class DataKeyRing(
             if (activeId > keys.ActiveRootKeyId && activeId <= ushort.MaxValue)
                 await LoadRootKeyAsync(contextType, keys, (ushort)activeId.Value, "refresh");
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        // a timeout of the key management service or the store isn't a cancellation: logged, the next refresh retries
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             logger.LogWarning(ex, "Failed to check for a new root key of {Context}", contextType.Name);
         }

@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace EntityFrameworkCore.Encrypted;
 
+/// <summary>Enables encryption for a context.</summary>
 public static class DbContextOptionsBuilderExtensions
 {
     /// <summary>

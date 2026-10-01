@@ -123,6 +123,17 @@ If you expect to rename things, set explicit labels like `"customers.email"` fro
 
 Putting `[MaxLength]`, `HasMaxLength` or a sized column type like `varchar(100)` on an encrypted property throws when the model is built. That's deliberate. The ciphertext is 35 bytes longer than your value, and strings grow by another third when they're Base64 encoded, so the limit would cut off ciphertext at unexpected points. Validate the length of the value in your application instead.
 
+## What can't be encrypted
+
+The same value encrypts differently every time. A few things depend on the database comparing stored values, so those can't be encrypted, and they're rejected when the model is built:
+
+- **Keys and foreign keys.** Rows couldn't be found or referenced. Keep identifiers plain, or use a surrogate key.
+- **Concurrency tokens.** The stored value changes on every save, so every update would look like a conflict.
+- **Columns with a unique index.** Uniqueness wouldn't be enforced. To keep values unique, check with a [blind index](blind-indexes) lookup before saving.
+- **Seed data (`HasData`).** It's written into migrations without keys, and differently each time. Seed encrypted values from code on startup instead.
+
+A model passed with `UseModel(...)` isn't supported either. That includes compiled models from `dotnet ef dbcontext optimize`. Encrypted properties are configured while the model is built, so the first query or save throws instead of storing plaintext.
+
 ## Encrypting a column that already has data
 
 Marking an existing column as encrypted doesn't encrypt the rows that are already there. Those values are still plaintext, and reading them fails with an "unsupported format" error. [`GetKeyUsageAsync`](key-management#key-usage) shows how many there are, listing them with an empty root key id.

@@ -62,7 +62,19 @@ public class EncryptedQueryGuardTests : IDisposable
             { "join on encrypted outer key", q => q.Select(x => x.Text).Join(q, s => s, x => x.Id.ToString(), (s, x) => x.Id) },
             { "nested projection distinct", q => q.Select(x => x.Text).Select(s => s).Distinct() },
             { "nested projection filter", q => q.Select(x => x.Text).Select(s => s).Where(s => s == value) },
-            { "nested anonymous projection distinct", q => q.Select(x => x.Text).Select(s => new { s }).Distinct() }
+            { "nested anonymous projection distinct", q => q.Select(x => x.Text).Select(s => new { s }).Distinct() },
+            { "coalesce", q => q.Where(x => (x.Text ?? "") == value) },
+            { "order by coalesce", q => q.OrderBy(x => x.Text ?? "") },
+            { "conditional", q => q.Where(x => (x.Id > 1 ? x.Text : "a") == value) },
+            { "concatenation", q => q.Where(x => x.Text + "" == value) },
+            { "scalar subquery", q => q.Where(x => q.Where(y => y.Id == x.Id).Select(y => y.Text).FirstOrDefault() == value) },
+            { "plain column compared to subquery", q => q.Where(x => x.Title == q.Select(y => y.Text).FirstOrDefault()) },
+            { "anonymous projection filter", q => q.Select(x => new { x.Id, x.Text }).Where(a => a.Text == value) },
+            { "dto projection filter", q => q.Select(x => new DocumentDto { Id = x.Id, Text = x.Text }).Where(a => a.Text == value) },
+            { "record projection order", q => q.Select(x => new DocumentRecord(x.Id, x.Text)).OrderBy(a => a.Text) },
+            { "let", q => from x in q let s = x.Text where s == value select x },
+            { "group element max", q => q.GroupBy(x => x.Id, x => x.Text).Select(g => g.Max()) },
+            { "group element distinct", q => q.GroupBy(x => 1, x => x.Text).Select(g => g.Distinct().Count()) }
         };
     }
 
@@ -106,7 +118,11 @@ public class EncryptedQueryGuardTests : IDisposable
             { "anonymous projection filtered by other column", q => q.Select(x => new { x.Id, x.Text }).Where(x => x.Id > 1) },
             { "union of other columns", q => q.Select(x => x.Id).Union(q.Select(x => x.Id)) },
             { "join projecting encrypted inner value", q => q.Join(q, x => x.Id, y => y.Id, (x, y) => y.Text) },
-            { "nested projection", q => q.Select(x => x.Text).Select(s => s) }
+            { "nested projection", q => q.Select(x => x.Text).Select(s => s) },
+            { "anonymous projection filtered by null", q => q.Select(x => new { x.Id, x.Text }).Where(a => a.Text == null) },
+            { "group element count", q => q.GroupBy(x => x.Id, x => x.Text).Select(g => new { g.Key, Count = g.Count() }) },
+            { "let filtered by other column", q => from x in q let s = x.Text where x.Id > 1 select s },
+            { "plain column compared", q => q.Where(x => x.Title == "a") }
         };
 
     [Theory]
@@ -124,6 +140,24 @@ public class EncryptedQueryGuardTests : IDisposable
         _provider.Dispose();
     }
 
+    [Fact]
+    public void Should_reject_execute_update_copying_ciphertext()
+    {
+        var toPlainColumn = () => _context.Documents.ExecuteUpdate(s => s.SetProperty(x => x.Title, x => x.Text));
+        var fromColumn = () => _context.Documents.ExecuteUpdate(s => s.SetProperty(x => x.Text, x => x.Title));
+
+        toPlainColumn.Should().Throw<EntityFrameworkEncryptionException>().WithMessage("Document.Text is encrypted and can't be copied*");
+        fromColumn.Should().Throw<EntityFrameworkEncryptionException>().WithMessage("Document.Text is encrypted and can only be set to a value*");
+    }
+
     private static string? Mask(string? value)
         => value?[..1];
+
+    public sealed class DocumentDto
+    {
+        public int Id { get; init; }
+        public string? Text { get; init; }
+    }
+
+    public sealed record DocumentRecord(int Id, string? Text);
 }

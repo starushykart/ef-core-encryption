@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace EntityFrameworkCore.Encrypted;
 
+/// <summary>Registers encryption services.</summary>
 public static class ServiceCollectionExtensions
 {
     /// <summary>

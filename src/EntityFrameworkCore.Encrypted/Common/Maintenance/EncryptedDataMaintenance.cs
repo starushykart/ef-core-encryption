@@ -73,6 +73,7 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
         // updates run on a second connection: the reader streams the table on the first one
         await using var writerScope = scopeFactory.CreateAsyncScope();
         await using var writer = OwnedContext.Create(writerScope.ServiceProvider, contextType);
+        var writerContext = await GetWriterAsync(reader, writer, cancellationToken);
 
         foreach (var table in EncryptedTable.From(reader.Context, logger))
         {
@@ -87,7 +88,7 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
 
             async ValueTask FlushAsync()
             {
-                var (updated, conflicts) = await ExecuteAsync(writer.Context, pending, cancellationToken);
+                var (updated, conflicts) = await ExecuteAsync(writerContext, pending, cancellationToken);
                 reEncrypted += updated;
                 skipped += conflicts;
                 Telemetry.RecordReEncryption(contextType, "reencrypted", updated);
@@ -113,11 +114,11 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
                     if (TryReEncrypt(table, column, value) is var (reEncryptedValue, index))
                     {
                         // reEncryptedValue is never null here: null results don't match the pattern
-                        pending.Add(new Update(table, column.Name, column.Name, keys, value, reEncryptedValue));
+                        pending.Add(new Update(table, column.Store, column.Store, keys, value, reEncryptedValue));
 
                         // runs after the value update in the same transaction: matches only if that one did
                         if (index != null)
-                            pending.Add(new Update(table, column.Index!.Column, column.Name, keys, reEncryptedValue, index, Counted: false));
+                            pending.Add(new Update(table, column.Index!.Store, column.Store, keys, reEncryptedValue, index, Counted: false));
                     }
                     else
                     {
@@ -158,6 +159,7 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
 
         await using var writerScope = scopeFactory.CreateAsyncScope();
         await using var writer = OwnedContext.Create(writerScope.ServiceProvider, contextType);
+        var writerContext = await GetWriterAsync(reader, writer, cancellationToken);
 
         foreach (var table in EncryptedTable.From(reader.Context, logger).Where(x => x.Columns.Any(c => c.Index != null)))
         {
@@ -171,7 +173,7 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
 
             async ValueTask FlushAsync()
             {
-                rebuilt += (await ExecuteAsync(writer.Context, pending, cancellationToken)).Updated;
+                rebuilt += (await ExecuteAsync(writerContext, pending, cancellationToken)).Updated;
                 pending.Clear();
                 logger.LogInformation("Rebuilt {Count} blind indexes so far, now in {Table}", rebuilt, table.DisplayName);
             }
@@ -190,7 +192,7 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
                     if (hash == null || values[table.Columns.Count + i] is byte[] stored && stored.AsSpan().SequenceEqual(hash))
                         continue;
 
-                    pending.Add(new Update(table, index.Column, column.Name, keys, value, hash));
+                    pending.Add(new Update(table, index.Store, column.Store, keys, value, hash));
 
                     if (pending.Count >= batchSize)
                         await FlushAsync();
@@ -203,6 +205,41 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
 
         activity?.SetTag("rebuilt", rebuilt);
         return rebuilt;
+    }
+
+    /// <summary>
+    /// Updates run on a second connection while the reader streams the table on the first one, so the application
+    /// can keep writing. SQLite without WAL locks the whole database for the reader: there they run on the reader's
+    /// connection, which SQLite allows.
+    /// </summary>
+    private static async Task<DbContext> GetWriterAsync(OwnedContext reader, OwnedContext writer, CancellationToken cancellationToken)
+    {
+        if (reader.Context.Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite"
+            && !string.Equals(await GetJournalModeAsync(reader.Context, cancellationToken), "wal", StringComparison.OrdinalIgnoreCase))
+            return reader.Context;
+
+        if (ReferenceEquals(reader.Context.Database.GetDbConnection(), writer.Context.Database.GetDbConnection()))
+            throw new EntityFrameworkEncryptionException(
+                $"{reader.Context.GetType().Name} is configured with a shared DbConnection instance, but maintenance operations " +
+                "need two connections: one reads the table while the other writes. Configure it with a connection string");
+
+        return writer.Context;
+    }
+
+    private static async Task<string?> GetJournalModeAsync(DbContext context, CancellationToken cancellationToken)
+    {
+        await context.Database.OpenConnectionAsync(cancellationToken);
+
+        try
+        {
+            await using var command = context.Database.GetDbConnection().CreateCommand();
+            command.CommandText = "PRAGMA journal_mode";
+            return (await command.ExecuteScalarAsync(cancellationToken))?.ToString();
+        }
+        finally
+        {
+            await context.Database.CloseConnectionAsync();
+        }
     }
 
     private byte[]? TryComputeIndex(EncryptedTable table, EncryptedColumn column, object value)
@@ -294,9 +331,9 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
     {
         var sql = context.GetService<ISqlGenerationHelper>();
         // keys, encrypted values, then blind indexes (NULL for columns without one)
-        var columns = table.KeyColumns.Select(x => sql.DelimitIdentifier(x))
+        var columns = table.KeyColumns.Select(x => sql.DelimitIdentifier(x.Name))
             .Concat(table.Columns.Select(x => sql.DelimitIdentifier(x.Name)))
-            .Concat(table.Columns.Select(x => x.Index is { } index ? sql.DelimitIdentifier(index.Column) : "NULL"));
+            .Concat(table.Columns.Select(x => x.Index is { } index ? sql.DelimitIdentifier(index.Store.Name) : "NULL"));
         var notNull = table.Columns.Select(x => $"{sql.DelimitIdentifier(x.Name)} IS NOT NULL");
 
         await context.Database.OpenConnectionAsync(cancellationToken);
@@ -348,11 +385,14 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
                 await using var batch = connection.CreateBatch();
                 batch.Transaction = transaction.GetDbTransaction();
 
+                // type mappings create parameters through a DbCommand; they are then added to the batch commands
+                await using var factory = connection.CreateCommand();
+
                 foreach (var update in updates)
                 {
                     var command = batch.CreateBatchCommand();
                     command.CommandText = update.ToSql(sql);
-                    update.AddParameters(command.Parameters, command.CreateParameter, sql);
+                    update.AddParameters(command.Parameters, factory, sql);
                     batch.BatchCommands.Add(command);
                 }
 
@@ -366,7 +406,7 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
                     await using var command = connection.CreateCommand();
                     command.Transaction = transaction.GetDbTransaction();
                     command.CommandText = update.ToSql(sql);
-                    update.AddParameters(command.Parameters, command.CreateParameter, sql);
+                    update.AddParameters(command.Parameters, command, sql);
 
                     var affected = await command.ExecuteNonQueryAsync(ct);
                     updated += update.Counted ? affected : 0;
@@ -377,13 +417,30 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
             return (updated, updates.Count(x => x.Counted) - updated);
         }, cancellationToken);
 
-    private sealed record EncryptedColumn(string Name, IEncryptionConverter Converter, BlindIndexColumn? Index);
+    /// <summary>Column with its type mapping: parameters are typed like the column (e.g. datetime2, varchar, enums).</summary>
+    private sealed record StoreColumn(string Name, RelationalTypeMapping Mapping)
+    {
+        public StoreColumn(IColumn column)
+            : this(column.Name, column.StoreTypeMapping)
+        { }
+    }
 
-    private sealed record BlindIndexColumn(string Column, BlindIndexer Indexer);
+    private sealed record EncryptedColumn(StoreColumn Store, IEncryptionConverter Converter, BlindIndexColumn? Index)
+    {
+        public string Name => Store.Name;
+    }
 
-    private sealed record EncryptedTable(string Name, string? Schema, IReadOnlyList<string> KeyColumns, IReadOnlyList<EncryptedColumn> Columns)
+    private sealed record BlindIndexColumn(StoreColumn Store, BlindIndexer Indexer);
+
+    private sealed record EncryptedTable(string Name, string? Schema, IReadOnlyList<StoreColumn> KeyColumns, IReadOnlyList<EncryptedColumn> Columns)
     {
         public string DisplayName => Schema == null ? Name : $"{Schema}.{Name}";
+
+        private static bool IsEncrypted(IProperty property)
+            => property.GetValueConverter() is IEncryptionConverter;
+
+        private static bool HasEncrypted(IComplexType type)
+            => type.GetProperties().Any(IsEncrypted) || type.GetComplexProperties().Any(x => HasEncrypted(x.ComplexType));
 
         private static BlindIndexColumn? FindBlindIndex(ITable table, IColumn column)
         {
@@ -392,7 +449,7 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
             return column.PropertyMappings
                 .Select(x => BlindIndex.Find(x.Property))
                 .FirstOrDefault(x => x != null) is { } index
-                ? new BlindIndexColumn(index.GetColumnName(store)!, ((IBlindIndexConverter)index.GetValueConverter()!).Indexer)
+                ? new BlindIndexColumn(new StoreColumn(table.FindColumn(index.GetColumnName(store)!)!), ((IBlindIndexConverter)index.GetValueConverter()!).Indexer)
                 : null;
         }
 
@@ -400,10 +457,17 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
         {
             var model = context.Model;
 
-            foreach (var entityType in model.GetEntityTypes().Where(x => x.IsMappedToJson()))
+            // only table columns are scanned: key usage would miss values stored elsewhere
+            foreach (var entityType in model.GetEntityTypes())
             {
-                if (entityType.GetDeclaredProperties().Any(x => x.GetValueConverter() is IEncryptionConverter))
-                    logger.LogWarning("{Entity} is mapped to JSON: its encrypted values are not scanned", entityType.DisplayName());
+                if (!entityType.GetDeclaredProperties().Any(IsEncrypted) && !entityType.GetDeclaredComplexProperties().Any(x => HasEncrypted(x.ComplexType)))
+                    continue;
+
+                if (entityType.IsMappedToJson() || entityType.GetDeclaredComplexProperties().Any(x => x.ComplexType.IsMappedToJson() && HasEncrypted(x.ComplexType)))
+                    logger.LogWarning("{Entity} has encrypted values mapped to JSON: they are not scanned", entityType.DisplayName());
+                else if (entityType.GetTableName() == null)
+                    logger.LogWarning("{Entity} isn't mapped to a table (e.g. a view or a SQL query): its encrypted values are not scanned",
+                        entityType.DisplayName());
             }
 
             foreach (var table in model.GetRelationalModel().Tables)
@@ -423,14 +487,14 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
                             $"Column {table.Name}.{column.Name} is mapped to encrypted properties with different labels");
 
                     if (converters.Count == 1)
-                        columns.Add(new EncryptedColumn(column.Name, converters[0], FindBlindIndex(table, column)));
+                        columns.Add(new EncryptedColumn(new StoreColumn(column), converters[0], FindBlindIndex(table, column)));
                 }
 
                 if (columns.Count > 0)
                     yield return new EncryptedTable(
                         table.Name,
                         table.Schema,
-                        table.PrimaryKey?.Columns.Select(x => x.Name).ToList() ?? [],
+                        table.PrimaryKey?.Columns.Select(x => new StoreColumn(x)).ToList() ?? [],
                         columns);
             }
         }
@@ -444,29 +508,31 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
     /// <param name="CheckedColumn">Encrypted column that must still contain <paramref name="OldValue"/>.</param>
     /// <param name="Counted">Counted in the result: <c>false</c> for blind indexes set along with re-encrypted values.</param>
     private sealed record Update(
-        EncryptedTable Table, string Column, string CheckedColumn, object[] Keys, object OldValue, object NewValue, bool Counted = true)
+        EncryptedTable Table, StoreColumn Column, StoreColumn CheckedColumn, object[] Keys, object OldValue, object NewValue, bool Counted = true)
     {
         public string ToSql(ISqlGenerationHelper sql)
         {
-            var keys = Table.KeyColumns.Select((x, i) => $"{sql.DelimitIdentifier(x)} = {sql.GenerateParameterNamePlaceholder($"k{i}")}");
+            var keys = Table.KeyColumns.Select((x, i) => $"{sql.DelimitIdentifier(x.Name)} = {sql.GenerateParameterNamePlaceholder($"k{i}")}");
 
             return $"UPDATE {sql.DelimitIdentifier(Table.Name, Table.Schema)} " +
-                   $"SET {sql.DelimitIdentifier(Column)} = {sql.GenerateParameterNamePlaceholder("new_value")} " +
-                   $"WHERE {string.Join(" AND ", keys)} AND {sql.DelimitIdentifier(CheckedColumn)} = {sql.GenerateParameterNamePlaceholder("old_value")}";
+                   $"SET {sql.DelimitIdentifier(Column.Name)} = {sql.GenerateParameterNamePlaceholder("new_value")} " +
+                   $"WHERE {string.Join(" AND ", keys)} AND {sql.DelimitIdentifier(CheckedColumn.Name)} = {sql.GenerateParameterNamePlaceholder("old_value")}";
         }
 
-        public void AddParameters(DbParameterCollection parameters, Func<DbParameter> create, ISqlGenerationHelper sql)
+        /// <param name="factory">Creates the parameters, configured by the type mapping of their column.</param>
+        public void AddParameters(DbParameterCollection parameters, DbCommand factory, ISqlGenerationHelper sql)
         {
-            Add("new_value", NewValue);
-            Add("old_value", OldValue);
+            Add("new_value", Column.Mapping, NewValue);
+            Add("old_value", CheckedColumn.Mapping, OldValue);
 
             for (var i = 0; i < Keys.Length; i++)
-                Add($"k{i}", Keys[i]);
+                Add($"k{i}", Table.KeyColumns[i].Mapping, Keys[i]);
 
-            void Add(string name, object value)
+            void Add(string name, RelationalTypeMapping mapping, object value)
             {
-                var parameter = create();
-                parameter.ParameterName = sql.GenerateParameterName(name);
+                // configured without a value: values are as read from or written to the column, the converter of the
+                // mapping (e.g. of a strongly typed id) must not run on them
+                var parameter = mapping.CreateParameter(factory, sql.GenerateParameterName(name), null, nullable: false);
                 parameter.Value = value;
                 parameters.Add(parameter);
             }

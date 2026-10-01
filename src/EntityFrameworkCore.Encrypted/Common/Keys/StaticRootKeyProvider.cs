@@ -54,10 +54,20 @@ internal sealed class StaticRootKeyProvider(
         var indexKey = Unwrap(dbContextType, stored, wrappingKeyId);
 
         // wrapped with an older static key: rewrap with the active one, so the old key can be removed later
+        // best effort: the key is usable either way, e.g. when the application may only read the key store
         if (wrappingKeyId != ActiveId)
         {
-            await store.UpdateAsync(dbContextType, Wrap(indexKey, stored.CreatedAt), cancellationToken);
-            logger.LogInformation("Blind index key of {Context} rewrapped with static key {KeyId}", dbContextType.Name, ActiveId);
+            try
+            {
+                await store.UpdateAsync(dbContextType, Wrap(indexKey, stored.CreatedAt), cancellationToken);
+                logger.LogInformation("Blind index key of {Context} rewrapped with static key {KeyId}", dbContextType.Name, ActiveId);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            {
+                logger.LogWarning(ex,
+                    "Blind index key of {Context} can't be rewrapped with static key {KeyId}: keep static key {PreviousKeyId} until it is",
+                    dbContextType.Name, ActiveId, wrappingKeyId);
+            }
         }
 
         return indexKey;

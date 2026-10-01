@@ -24,6 +24,7 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
         if (eventData.Context is not { } context)
             return queryExpression;
 
+        EncryptedModel.EnsureBuiltWithEncryption(context);
         var properties = Cache.GetValue(context.Model, EncryptedProperties.Create);
 
         if (properties.IsEmpty)
@@ -229,6 +230,23 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
         }
     }
 
+    /// <summary>What an expression holds, as far as encrypted values go.</summary>
+    private abstract record Shape;
+
+    /// <summary>An encrypted value, or a value computed from one in the database (coalesce, concatenation, conditional).</summary>
+    private sealed record EncryptedValue(IReadOnlyProperty Property) : Shape;
+
+    /// <summary>A projected object (anonymous type, DTO, transparent identifier) with members holding encrypted values.</summary>
+    private sealed record Projection(IReadOnlyDictionary<string, Shape> Members) : Shape;
+
+    /// <summary>A group: its key and its elements.</summary>
+    private sealed record Grouping(Shape? Key, Shape? Element) : Shape;
+
+    /// <summary>
+    /// Tracks encrypted values through the query: columns, values computed from them, projections, subqueries and groups,
+    /// with lambda parameters bound to the elements of the sequence they iterate. Rejects comparisons, database functions,
+    /// key selectors and element comparisons involving encrypted values, and ExecuteUpdate setters copying ciphertext.
+    /// </summary>
     private sealed class Visitor(EncryptedProperties properties) : ExpressionVisitor
     {
         // lambda arguments the database evaluates as keys: ordering, grouping, joining, min/max
@@ -256,17 +274,37 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
             nameof(Queryable.Intersect), nameof(Queryable.Except), nameof(Queryable.SequenceEqual)
         ];
 
-        // operators returning their source elements unchanged
+        // operators returning their source elements
         private static readonly HashSet<string> PassThrough =
         [
             nameof(Queryable.Where), nameof(Queryable.Take), nameof(Queryable.Skip), nameof(Queryable.TakeWhile),
-            nameof(Queryable.SkipWhile), nameof(Queryable.Concat), nameof(Queryable.Reverse), nameof(Queryable.AsQueryable),
-            nameof(Enumerable.AsEnumerable), nameof(EntityFrameworkQueryableExtensions.AsNoTracking),
-            nameof(EntityFrameworkQueryableExtensions.AsTracking), nameof(EntityFrameworkQueryableExtensions.TagWith)
+            nameof(Queryable.SkipWhile), nameof(Queryable.Reverse), nameof(Queryable.AsQueryable), nameof(Enumerable.AsEnumerable),
+            nameof(Queryable.OrderBy), nameof(Queryable.OrderByDescending), nameof(Queryable.ThenBy), nameof(Queryable.ThenByDescending),
+            nameof(Queryable.Order), nameof(Queryable.OrderDescending), nameof(Queryable.Distinct), nameof(Queryable.DistinctBy),
+            nameof(Queryable.DefaultIfEmpty), nameof(Queryable.Cast), nameof(Queryable.OfType),
+            nameof(EntityFrameworkQueryableExtensions.AsNoTracking), nameof(EntityFrameworkQueryableExtensions.AsTracking),
+            nameof(EntityFrameworkQueryableExtensions.AsNoTrackingWithIdentityResolution), nameof(EntityFrameworkQueryableExtensions.TagWith),
+            nameof(EntityFrameworkQueryableExtensions.Include), nameof(EntityFrameworkQueryableExtensions.ThenInclude),
+            nameof(EntityFrameworkQueryableExtensions.IgnoreQueryFilters), nameof(EntityFrameworkQueryableExtensions.IgnoreAutoIncludes),
+            nameof(RelationalQueryableExtensions.AsSplitQuery), nameof(RelationalQueryableExtensions.AsSingleQuery)
         ];
 
-        // lambda parameters bound to encrypted values: Select(x => x.Secret).Where(s => s == "...")
-        private readonly Dictionary<ParameterExpression, IReadOnlyProperty> _encryptedParameters = [];
+        // sequence operators returning one of the elements
+        private static readonly HashSet<string> SingleElement =
+        [
+            nameof(Queryable.First), nameof(Queryable.FirstOrDefault), nameof(Queryable.Single), nameof(Queryable.SingleOrDefault),
+            nameof(Queryable.Last), nameof(Queryable.LastOrDefault), nameof(Queryable.ElementAt), nameof(Queryable.ElementAtOrDefault),
+            nameof(Queryable.Min), nameof(Queryable.Max), nameof(Queryable.MinBy), nameof(Queryable.MaxBy)
+        ];
+
+        // set operators: elements come from both sequences
+        private static readonly HashSet<string> Combining =
+        [
+            nameof(Queryable.Concat), nameof(Queryable.Union), nameof(Queryable.Intersect), nameof(Queryable.Except)
+        ];
+
+        // lambda parameters bound to what the elements of their sequence hold: Select(x => x.Secret).Where(s => s == "...")
+        private readonly Dictionary<ParameterExpression, Shape> _parameters = [];
 
         protected override Expression VisitBinary(BinaryExpression node)
         {
@@ -291,13 +329,17 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
             if (IsEfProperty(node))
                 return base.VisitMethodCall(node);
 
+            if (IsExecuteUpdate(node, out var setters))
+                CheckSetters(setters);
+
             // x.Secret.Contains(...), x.Secret.ToLower(), ...
             if (node.Object != null)
-                Reject(node.Object);
+                RejectValue(node.Object);
 
-            // string.IsNullOrEmpty(x.Secret), list.Contains(x.Secret), EF.Functions.Like(x.Secret, ...), ...
+            // string.IsNullOrEmpty(x.Secret), list.Contains(x.Secret), EF.Functions.Like(x.Secret, ...), ...;
+            // sequences are checked by the operators comparing their elements: g.Count() only counts
             if (IsTranslatedByDatabase(node))
-                Reject([..node.Arguments]);
+                Reject([..node.Arguments.Where((_, i) => !IsSequence(node.Method.GetParameters()[i].ParameterType))]);
 
             if (IsSequenceOperator(node))
                 CheckSequenceOperator(node);
@@ -319,7 +361,7 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
         protected override Expression VisitMember(MemberExpression node)
         {
             if (node.Expression != null)
-                Reject(node.Expression);
+                RejectValue(node.Expression);
 
             return base.VisitMember(node);
         }
@@ -328,7 +370,7 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
         protected override Expression VisitUnary(UnaryExpression node)
         {
             if (node.NodeType == ExpressionType.ArrayLength)
-                Reject(node.Operand);
+                RejectValue(node.Operand);
 
             return base.VisitUnary(node);
         }
@@ -346,13 +388,44 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
                    || node.Object != null && node.Object.Type != typeof(string) && node.Method.Name == "Contains";
         }
 
+        // SetProperty(x => x.Plain, x => x.Secret) would copy ciphertext; SetProperty(x => x.Secret, x => x.Other)
+        // would store a value the database can't encrypt
+        private void CheckSetters(NewArrayExpression setters)
+        {
+            foreach (var setter in setters.Expressions)
+            {
+                if (setter is not NewExpression { Arguments: [LambdaExpression selector, var value] }
+                    || StripQuote(value) is not LambdaExpression valueSelector
+                    || !ReadsParameters(valueSelector))
+                    continue;
+
+                if (ShapeOf(selector.Body) is EncryptedValue target)
+                    throw new EntityFrameworkEncryptionException(
+                        $"{EncryptionConvention.DisplayName(target.Property)} is encrypted and can only be set to a value in ExecuteUpdate, " +
+                        "not to an expression over columns: the database can't encrypt it");
+
+                if (Encrypted(ShapeOf(valueSelector.Body)) is { } source)
+                    throw new EntityFrameworkEncryptionException(
+                        $"{EncryptionConvention.DisplayName(source)} is encrypted and can't be copied to another column in ExecuteUpdate: " +
+                        "the database would copy its ciphertext. Load the entities and use SaveChanges instead");
+            }
+        }
+
+        // a value or a projected object holding an encrypted value
         private void Reject(params Expression[] expressions)
         {
             foreach (var expression in expressions)
             {
-                if (Find(expression) is { } property)
+                if (Encrypted(ShapeOf(expression)) is { } property)
                     throw Rejected(property);
             }
+        }
+
+        // an encrypted value itself: members of projected objects are only read
+        private void RejectValue(Expression expression)
+        {
+            if (ShapeOf(expression) is EncryptedValue value)
+                throw Rejected(value.Property);
         }
 
         private static EntityFrameworkEncryptionException Rejected(IReadOnlyProperty property)
@@ -363,97 +436,272 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
         private void CheckSequenceOperator(MethodCallExpression node)
         {
             // every sequence operand: plain.Union(q.Select(x => x.Secret)), outer.Join(q.Select(x => x.Secret), ...)
-            var sequences = node.Arguments.Select(FindSequence).ToArray();
+            var sequences = node.Arguments.Select(ElementShape).ToArray();
 
             // Contains(source, item): only the source is a sequence of elements being compared
             var compared = node.Method.Name is nameof(Queryable.Contains) ? sequences.Take(1) : sequences;
 
             if (ElementComparisons.Contains(node.Method.Name)
                 && node.Arguments.Skip(1).All(x => StripQuote(x) is not LambdaExpression)
-                && compared.FirstOrDefault(x => x != null) is { } sequence)
+                && compared.Select(Encrypted).FirstOrDefault(x => x != null) is { } property)
             {
-                throw Rejected(sequence.Property);
+                throw Rejected(property);
             }
 
-            // the elements are the encrypted values themselves: lambdas over them are checked like the property
-            if (node.Method.Name is nameof(Queryable.Join) or nameof(Queryable.GroupJoin) && node.Arguments.Count >= 5)
+            BindLambdas(node, sequences);
+        }
+
+        /// <summary>Binds the lambda parameters of a sequence operator to what the elements they receive hold.</summary>
+        private void BindLambdas(MethodCallExpression node, Shape?[] sequences)
+        {
+            var arguments = node.Arguments;
+
+            switch (node.Method.Name)
             {
-                Bind(node.Arguments[2], 0, sequences[0]);
-                Bind(node.Arguments[3], 0, sequences[1]);
-                Bind(node.Arguments[4], 0, sequences[0]);
-                Bind(node.Arguments[4], 1, sequences[1]);
-            }
-            else if (node.Method.Name is nameof(Queryable.Zip) && node.Arguments.Count >= 3)
-            {
-                Bind(node.Arguments[2], 0, sequences[0]);
-                Bind(node.Arguments[2], 1, sequences[1]);
-            }
-            else
-            {
-                foreach (var lambda in node.Arguments.Skip(1))
-                    Bind(lambda, 0, sequences[0]);
+                case nameof(Queryable.Join) when arguments.Count >= 5:
+                    Bind(arguments[2], sequences[0]);
+                    Bind(arguments[3], sequences[1]);
+                    Bind(arguments[4], sequences[0], sequences[1]);
+                    break;
+
+                case nameof(Queryable.GroupJoin) when arguments.Count >= 5:
+                    Bind(arguments[2], sequences[0]);
+                    Bind(arguments[3], sequences[1]);
+                    Bind(arguments[4], sequences[0], sequences[1] == null ? null : new Grouping(null, sequences[1]));
+                    break;
+
+                case nameof(Queryable.Zip) when arguments.Count >= 3:
+                    Bind(arguments[2], sequences[0], sequences[1]);
+                    break;
+
+                case nameof(Queryable.GroupBy):
+                    _ = GroupBy(node, sequences[0]);
+                    break;
+
+                case nameof(Queryable.SelectMany):
+                    _ = SelectMany(node, sequences[0]);
+                    break;
+
+                default:
+                    foreach (var lambda in arguments.Skip(1))
+                        Bind(lambda, sequences[0]);
+                    break;
             }
         }
 
-        private void Bind(Expression argument, int parameterIndex, (IReadOnlyProperty Property, bool IsValue)? sequence)
+        private void Bind(Expression argument, params Shape?[] shapes)
         {
-            if (sequence is { IsValue: true } value
-                && StripQuote(argument) is LambdaExpression lambda
-                && parameterIndex < lambda.Parameters.Count
-                && lambda.Parameters[parameterIndex].Type == value.Property.ClrType)
+            if (StripQuote(argument) is not LambdaExpression lambda)
+                return;
+
+            for (var i = 0; i < Math.Min(shapes.Length, lambda.Parameters.Count); i++)
             {
-                _encryptedParameters[lambda.Parameters[parameterIndex]] = value.Property;
+                if (shapes[i] is { } shape)
+                    _parameters[lambda.Parameters[i]] = shape;
             }
         }
 
-        /// <summary>Encrypted property whose values the sequence contains, as is or within projected objects.</summary>
-        private (IReadOnlyProperty Property, bool IsValue)? FindSequence(Expression expression)
+        /// <summary>What the elements of a sequence hold, or <c>null</c> if no encrypted values.</summary>
+        private Shape? ElementShape(Expression expression)
         {
-            if (StripConvert(expression) is not MethodCallExpression call || !IsSequenceOperator(call))
+            expression = StripConvert(expression);
+
+            // the elements of a group: GroupBy(x => x.Id, x => x.Secret).Select(g => g.Max())
+            if (expression is ParameterExpression parameter)
+                return _parameters.GetValueOrDefault(parameter) is Grouping group ? group.Element : null;
+
+            if (expression is not MethodCallExpression call || !IsSequenceOperator(call))
                 return null;
 
-            if (call.Method.Name is nameof(Queryable.Select) && StripQuote(call.Arguments[1]) is LambdaExpression selector)
+            var source = ElementShape(call.Arguments[0]);
+
+            switch (call.Method.Name)
             {
-                // nested projections: q.Select(x => x.Secret).Select(s => s)
-                Bind(selector, 0, FindSequence(call.Arguments[0]));
+                case nameof(Queryable.Select) when StripQuote(call.Arguments[1]) is LambdaExpression selector:
+                    Bind(selector, source);
+                    return ShapeOf(selector.Body);
 
-                if (Find(selector.Body) is { } value)
-                    return (value, true);
+                case nameof(Queryable.SelectMany):
+                    return SelectMany(call, source);
 
-                return KeyParts(selector.Body).Select(Find).FirstOrDefault(x => x != null) is { } part ? (part, false) : null;
+                case nameof(Queryable.GroupBy):
+                    return GroupBy(call, source);
+
+                case nameof(Queryable.Join) or nameof(Queryable.GroupJoin) or nameof(Queryable.Zip)
+                    when StripQuote(call.Arguments[^1]) is LambdaExpression result && call.Arguments.Count >= 3:
+                    BindLambdas(call, [..call.Arguments.Select(ElementShape)]);
+                    return ShapeOf(result.Body);
+
+                case var name when Combining.Contains(name):
+                    return source ?? ElementShape(call.Arguments[1]);
+
+                case var name when PassThrough.Contains(name):
+                    return source;
+
+                default:
+                    return null;
             }
+        }
 
-            if (!PassThrough.Contains(call.Method.Name))
+        private Shape? SelectMany(MethodCallExpression call, Shape? source)
+        {
+            if (StripQuote(call.Arguments[1]) is not LambdaExpression collectionSelector)
                 return null;
 
-            return call.Method.Name is nameof(Queryable.Concat)
-                ? FindSequence(call.Arguments[0]) ?? FindSequence(call.Arguments[1])
-                : FindSequence(call.Arguments[0]);
+            Bind(collectionSelector, source);
+            var collection = ElementShape(collectionSelector.Body);
+
+            if (call.Arguments.Count < 3 || StripQuote(call.Arguments[2]) is not LambdaExpression resultSelector)
+                return collection;
+
+            Bind(resultSelector, source, collection);
+            return ShapeOf(resultSelector.Body);
         }
+
+        private Shape? GroupBy(MethodCallExpression call, Shape? source)
+        {
+            var lambdas = call.Arguments.Skip(1).Select(StripQuote).OfType<LambdaExpression>().ToList();
+
+            if (lambdas.Count == 0)
+                return null;
+
+            Bind(lambdas[0], source);
+            var key = ShapeOf(lambdas[0].Body);
+
+            // GroupBy(key, element), GroupBy(key, result: (key, elements)), GroupBy(key, element, result)
+            var element = source;
+            var next = 1;
+
+            if (lambdas.Count > 1 && lambdas[1].Parameters.Count == 1)
+            {
+                Bind(lambdas[1], source);
+                element = ShapeOf(lambdas[1].Body);
+                next = 2;
+            }
+
+            var group = key == null && element == null ? null : new Grouping(key, element);
+
+            if (lambdas.Count <= next)
+                return group;
+
+            Bind(lambdas[next], key, group);
+            return ShapeOf(lambdas[next].Body);
+        }
+
+        /// <summary>What a value holds: an encrypted value, a projected object or a group.</summary>
+        private Shape? ShapeOf(Expression expression)
+        {
+            expression = StripQuote(StripConvert(expression));
+
+            switch (expression)
+            {
+                case ParameterExpression parameter:
+                    return _parameters.GetValueOrDefault(parameter);
+
+                case MemberExpression { Expression: { } instance } member:
+                    return Member(instance, member.Member.Name);
+
+                case MethodCallExpression call when IsEfProperty(call) && call.Arguments[1] is ConstantExpression { Value: string name }:
+                    return Member(call.Arguments[0], name);
+
+                // q.Where(...).Select(x => x.Secret).FirstOrDefault(), q.Max(x => x.Secret)
+                case MethodCallExpression call when IsSequenceOperator(call) && SingleElement.Contains(call.Method.Name):
+                    if (call.Arguments.Count == 2 && StripQuote(call.Arguments[1]) is LambdaExpression selector
+                        && call.Method.Name is nameof(Queryable.Min) or nameof(Queryable.Max))
+                    {
+                        Bind(selector, ElementShape(call.Arguments[0]));
+                        return ShapeOf(selector.Body);
+                    }
+
+                    return ElementShape(call.Arguments[0]);
+
+                case MethodCallExpression call when call.Method.DeclaringType == typeof(string) && call.Method.Name == nameof(string.Concat):
+                    return call.Arguments.Select(ShapeOf).OfType<EncryptedValue>().FirstOrDefault();
+
+                // computed in the database from the encrypted value: x.Secret ?? "", x.Secret + "", c ? x.Secret : x.Plain
+                case BinaryExpression binary when binary.NodeType is ExpressionType.Coalesce or ExpressionType.Add:
+                    return ShapeOf(binary.Left) as EncryptedValue ?? ShapeOf(binary.Right) as EncryptedValue;
+
+                case ConditionalExpression conditional:
+                    return ShapeOf(conditional.IfTrue) as EncryptedValue ?? ShapeOf(conditional.IfFalse) as EncryptedValue;
+
+                case NewExpression @new:
+                    return Project(@new, []);
+
+                case MemberInitExpression init:
+                    return Project(init.NewExpression, init.Bindings.OfType<MemberAssignment>().Select(x => (x.Member.Name, x.Expression)));
+
+                default:
+                    return null;
+            }
+        }
+
+        private Shape? Member(Expression instance, string name)
+            => ShapeOf(instance) switch
+            {
+                Projection projection => projection.Members.GetValueOrDefault(name),
+                Grouping group => name == nameof(IGrouping<,>.Key) ? group.Key : null,
+
+                // generic code may access the property through an interface or base class cast
+                _ => properties.Find(instance, name) is { } property ? new EncryptedValue(property) : null
+            };
+
+        // new { x.Id, x.Secret }, new Dto { Secret = x.Secret }, new Dto(x.Secret) for positional records
+        private Projection? Project(NewExpression @new, IEnumerable<(string Name, Expression Value)> assignments)
+        {
+            var parameters = @new.Constructor?.GetParameters() ?? [];
+            var members = new Dictionary<string, Shape>();
+
+            var arguments = @new.Arguments.Select((x, i) => (Name: @new.Members?[i].Name ?? (i < parameters.Length ? parameters[i].Name : null), Value: x));
+
+            foreach (var (name, value) in arguments.Concat(assignments.Select(x => ((string?)x.Name, x.Value))))
+            {
+                if (name != null && ShapeOf(value) is { } shape)
+                    members[name] = shape;
+            }
+
+            return members.Count > 0 ? new Projection(members) : null;
+        }
+
+        /// <summary>Encrypted property held by a shape, also within projected objects and groups.</summary>
+        private static IReadOnlyProperty? Encrypted(Shape? shape)
+            => shape switch
+            {
+                EncryptedValue value => value.Property,
+                Projection projection => projection.Members.Values.Select(Encrypted).FirstOrDefault(x => x != null),
+                Grouping group => Encrypted(group.Key) ?? Encrypted(group.Element),
+                _ => null
+            };
+
+        private static bool IsExecuteUpdate(MethodCallExpression node, out NewArrayExpression setters)
+        {
+            setters = null!;
+
+            if (node.Method.Name != nameof(EntityFrameworkQueryableExtensions.ExecuteUpdate)
+                || node.Method.DeclaringType != typeof(EntityFrameworkQueryableExtensions)
+                || node.Arguments is not [_, NewArrayExpression array])
+                return false;
+
+            setters = array;
+            return true;
+        }
+
+        private static bool ReadsParameters(LambdaExpression lambda)
+        {
+            var finder = new ParameterFinder(lambda.Parameters);
+            finder.Visit(lambda.Body);
+            return finder.Found;
+        }
+
+        private static bool IsSequence(Type type)
+            => type != typeof(string) && typeof(System.Collections.IEnumerable).IsAssignableFrom(type);
 
         private static bool IsSequenceOperator(MethodCallExpression node)
             => node.Arguments.Count > 0
                && (node.Method.DeclaringType == typeof(Queryable)
                    || node.Method.DeclaringType == typeof(Enumerable)
-                   || node.Method.DeclaringType == typeof(EntityFrameworkQueryableExtensions));
-
-        private IReadOnlyProperty? Find(Expression expression)
-        {
-            expression = StripConvert(expression);
-
-            return expression switch
-            {
-                MemberExpression { Expression: { } instance } member => Find(instance, member.Member.Name),
-                MethodCallExpression call when IsEfProperty(call) && call.Arguments[1] is ConstantExpression { Value: string name }
-                    => Find(call.Arguments[0], name),
-                ParameterExpression parameter => _encryptedParameters.GetValueOrDefault(parameter),
-                _ => null
-            };
-        }
-
-        // generic code may access the property through an interface or base class cast
-        private IReadOnlyProperty? Find(Expression instance, string name)
-            => properties.Find(instance, name);
+                   || node.Method.DeclaringType == typeof(EntityFrameworkQueryableExtensions)
+                   || node.Method.DeclaringType == typeof(RelationalQueryableExtensions));
 
         private static Expression[] KeyParts(Expression body)
             => StripConvert(body) switch
@@ -471,7 +719,7 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
 
         private static Expression StripConvert(Expression expression)
         {
-            while (expression is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } unary)
+            while (expression is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked or ExpressionType.TypeAs } unary)
                 expression = unary.Operand;
 
             return expression;
@@ -479,5 +727,16 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
 
         private static Expression StripQuote(Expression expression)
             => expression is UnaryExpression { NodeType: ExpressionType.Quote } quote ? quote.Operand : expression;
+
+        private sealed class ParameterFinder(IReadOnlyCollection<ParameterExpression> parameters) : ExpressionVisitor
+        {
+            public bool Found { get; private set; }
+
+            protected override Expression VisitParameter(ParameterExpression node)
+            {
+                Found |= parameters.Contains(node);
+                return node;
+            }
+        }
     }
 }

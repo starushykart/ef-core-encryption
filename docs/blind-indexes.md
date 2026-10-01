@@ -84,6 +84,7 @@ You never set the index column yourself:
 | change the value and call `SaveChanges` | is recomputed |
 | set the value to `null` | becomes `NULL` too |
 | attach a detached entity with `Update` | is recomputed |
+| change the value in your own `SaveChanges` interceptor | is computed from the value that's saved |
 | `ExecuteUpdate(s => s.SetProperty(x => x.Email, value))` | is updated in the same statement |
 | rotate keys, re-encrypt or rewrap | stays as it is, and lookups keep working |
 
@@ -120,6 +121,6 @@ So use it for columns with many distinct values that you need to look up: emails
 ## Limitations
 
 - Equality only: no prefix search, ranges or sorting.
-- Properties of entity types, including owned types, but not of complex types yet.
+- Properties of entity types, including owned types, but not of complex types or types mapped to JSON yet.
 - Normalization works on values stored as strings, not on binary values.
 - Raw SQL that writes encrypted columns doesn't update the index (it can't write valid encrypted values either).

@@ -59,8 +59,13 @@ db.Customers.Select(x => Mask(x.Email));
 | set operations | `Select(x => x.Email).Distinct()`, `Union`, `Except`, `Intersect` |
 | aggregates | `Max(x => x.Email)`, `Min(...)` |
 | joins on encrypted columns | `Join(..., x => x.Email, ...)` |
-| filtering a projection | `Select(x => x.Email).Where(e => e == email)` |
+| filtering or sorting a projection | `Select(x => new { x.Id, x.Email }).Where(a => a.Email == email)`, also DTOs, records and `let` |
+| values computed from an encrypted column | `(x.Email ?? "") == email`, `x.Email + "" == email`, `OrderBy(x => x.Email ?? "")` |
+| subqueries returning an encrypted value | `Where(x => x.Name == db.Users.Select(u => u.Email).First())` |
+| aggregates over groups | `GroupBy(x => x.Country, x => x.Email).Select(g => g.Max())` |
 | `EF.Property` | `Where(x => EF.Property<string>(x, "Email") == email)` |
+
+Filter before you project, or filter by columns that aren't encrypted. That also covers query builders that put filters on projections, such as OData or GraphQL over AutoMapper's `ProjectTo`.
 
 Raw SQL (`FromSql`, `ExecuteSql`) isn't checked, so be careful there.
 
@@ -99,3 +104,12 @@ await db.Customers
 ```
 
 The usual rule still applies to the filter: `ExecuteUpdate` and `ExecuteDelete` can't filter by an encrypted column, unless it has a [blind index](blind-indexes).
+
+Setting columns from other columns runs entirely in the database, which can't encrypt or decrypt. So these throw:
+
+```csharp
+s.SetProperty(x => x.Email, x => x.BackupEmail);   // the database can't encrypt the copied value
+s.SetProperty(x => x.Notes, x => x.Email);         // would copy ciphertext into a plain column
+```
+
+Load the entities and use `SaveChanges` for those.
