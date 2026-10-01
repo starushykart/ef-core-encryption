@@ -36,4 +36,4 @@ Add a migration after enabling encryption: every encrypted context gets an `__En
 - Envelope encryption with a key management service: [EntityFrameworkCore.Encrypted.AwsKms](https://www.nuget.org/packages/EntityFrameworkCore.Encrypted.AwsKms)
 - Queries that compare, search or sort encrypted columns throw instead of returning wrong results
 
-Documentation: https://github.com/starushykart/ef-core-encryption
+Documentation: https://starushykart.github.io/ef-core-encryption
