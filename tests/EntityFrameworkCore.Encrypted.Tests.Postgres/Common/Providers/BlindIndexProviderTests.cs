@@ -97,6 +97,54 @@ public abstract class BlindIndexProviderTests(ITestOutputHelper helper) : IAsync
     }
 
     [Fact]
+    public async Task Should_update_blind_index_in_every_update_path()
+    {
+        var people = await AddPeopleAsync(_provider);
+
+        // tracked entity, synchronous SaveChanges
+        using (var scope = _provider.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BlindIndexDbContext>();
+            db.People.Single(x => x.Id == people[0].Id).Email = "jane.sync@example.com";
+            db.SaveChanges();
+        }
+
+        // detached entity with a new value: Update marks every property as modified
+        await using (var scope = _provider.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BlindIndexDbContext>();
+            db.Update(people[1] with { Email = "john.detached@example.com" });
+            await db.SaveChangesAsync();
+        }
+
+        // attached entity with only the encrypted property marked as modified
+        await using (var scope = _provider.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BlindIndexDbContext>();
+            var max = people[2] with { Email = "max.attached@example.com" };
+            db.Attach(max).Property(x => x.Email).IsModified = true;
+            await db.SaveChangesAsync();
+        }
+
+        // another property changes: the blind index stays valid
+        await using (var scope = _provider.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BlindIndexDbContext>();
+            (await db.People.SingleAsync(x => x.Id == people[0].Id)).Name = "jane doe";
+            await db.SaveChangesAsync();
+        }
+
+        await using var verify = _provider.CreateAsyncScope();
+        var context = verify.ServiceProvider.GetRequiredService<BlindIndexDbContext>();
+
+        (await context.People.SingleAsync(x => x.Email == "jane.sync@example.com")).Name.Should().Be("jane doe");
+        (await context.People.SingleAsync(x => x.Email == "john.detached@example.com")).Name.Should().Be("john");
+        (await context.People.SingleAsync(x => x.Email == "max.attached@example.com")).Name.Should().Be("max");
+        (await context.People.AnyAsync(x => x.Email == "jane@example.com" || x.Email == "john@example.com" || x.Email == "max@example.com"))
+            .Should().BeFalse("previous values are no longer indexed");
+    }
+
+    [Fact]
     public async Task Should_update_blind_index_with_execute_update()
     {
         await AddPeopleAsync(_provider);
