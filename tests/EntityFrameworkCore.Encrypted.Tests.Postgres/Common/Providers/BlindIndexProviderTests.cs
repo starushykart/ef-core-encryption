@@ -110,6 +110,11 @@ public abstract class BlindIndexProviderTests(ITestOutputHelper helper) : IAsync
         (await db.People.SingleAsync(x => x.Email == "NEW@example.com")).Email.Should().Be(email);
         (await db.People.AnyAsync(x => x.Email == "jane@example.com")).Should().BeFalse();
 
+        (await db.People.Where(x => x.Name == "john").ExecuteUpdateAsync(s => s.SetProperty(x => x.Email, (string?)null))).Should().Be(1);
+        (await db.People.SingleAsync(x => x.Email == null)).Name.Should().Be("john");
+        (await db.People.AnyAsync(x => x.Email == "john@example.com")).Should().BeFalse();
+        (await db.People.CountAsync(x => EF.Property<string?>(x, "Email_Index") == null)).Should().Be(1, "the index is cleared too");
+
         var fromExpression = () => db.People.ExecuteUpdateAsync(s => s.SetProperty(x => x.Email, x => x.Name));
         await fromExpression.Should().ThrowAsync<EntityFrameworkEncryptionException>().WithMessage("*blind index*");
     }

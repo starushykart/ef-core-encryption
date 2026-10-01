@@ -174,7 +174,8 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
                 || ToIndex(selector.Body) is not { } index)
                 yield break;
 
-            if (!IsValue(value))
+            // null clears both columns: the converter isn't applied to nulls
+            if (!IsValue(value) && !IsNullValue(value))
                 throw new EntityFrameworkEncryptionException(
                     $"{EncryptionConvention.DisplayName(Find(selector.Body)!)} has a blind index and can only be set to a value in ExecuteUpdate, " +
                     "not to an expression: its hash can't be computed in the database");
@@ -214,11 +215,17 @@ internal sealed class EncryptedQueryGuard : IQueryExpressionInterceptor
 
         // query parameters and constants: hashed by EF with the converter of the index; null checks stay on the column
         private static bool IsValue(Expression expression)
+            => StripConvert(expression) is QueryParameterExpression or ConstantExpression { Value: not null and not IQueryable };
+
+        private static bool IsNullValue(Expression expression)
+            => StripConvert(expression) is ConstantExpression { Value: null } or DefaultExpression;
+
+        private static Expression StripConvert(Expression expression)
         {
             while (expression is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } unary)
                 expression = unary.Operand;
 
-            return expression is QueryParameterExpression or ConstantExpression { Value: not null and not IQueryable };
+            return expression;
         }
     }
 
