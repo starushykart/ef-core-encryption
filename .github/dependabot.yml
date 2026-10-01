@@ -1,0 +1,23 @@
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      ef-core:
+        patterns: [ "Microsoft.EntityFrameworkCore*", "Npgsql.EntityFrameworkCore*" ]
+      microsoft-extensions:
+        patterns: [ "Microsoft.Extensions.*", "Microsoft.AspNetCore.*" ]
+      aws:
+        patterns: [ "AWSSDK.*" ]
+      tests:
+        patterns: [ "xunit*", "AwesomeAssertions", "Microsoft.Testing.*", "Testcontainers*", "Bogus", "Respawn", "MartinCostello.*", "BenchmarkDotNet*" ]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: [ "*" ]

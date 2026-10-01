@@ -22,7 +22,7 @@ internal sealed class DataKeyRing(IRootKeyProvider rootKeyProvider, EncryptionSe
     {
         try
         {
-            await GetOrStartLoad(contextType).WaitAsync(cancellationToken);
+            await LoadAsync(contextType, cancellationToken);
         }
         catch (EncryptionKeyStoreUnavailableException ex)
         {
@@ -32,7 +32,15 @@ internal sealed class DataKeyRing(IRootKeyProvider rootKeyProvider, EncryptionSe
         }
     }
 
-    public (KeyId KeyId, byte[] Key) GetEncryptionKey(Type contextType)
+    /// <summary>Loads the keys of a context if not loaded yet; failed loads are retried.</summary>
+    /// <returns>Key that encrypts new values.</returns>
+    public async Task<KeyId> LoadAsync(Type contextType, CancellationToken cancellationToken)
+    {
+        var keys = await GetOrStartLoad(contextType).WaitAsync(cancellationToken);
+        return new KeyId(keys.ActiveRootKeyId, settings.DataKeyVersion);
+    }
+
+    public (KeyId KeyId, DataKey Key) GetEncryptionKey(Type contextType)
     {
         var keys = GetContextKeys(contextType);
         var keyId = new KeyId(keys.ActiveRootKeyId, settings.DataKeyVersion);
@@ -40,7 +48,7 @@ internal sealed class DataKeyRing(IRootKeyProvider rootKeyProvider, EncryptionSe
         return (keyId, keys.GetDataKey(keyId));
     }
 
-    public byte[] GetDecryptionKey(Type contextType, KeyId keyId)
+    public DataKey GetDecryptionKey(Type contextType, KeyId keyId)
     {
         var keys = GetContextKeys(contextType);
 
@@ -174,7 +182,7 @@ internal sealed class DataKeyRing(IRootKeyProvider rootKeyProvider, EncryptionSe
     private sealed class ContextKeys
     {
         private readonly ConcurrentDictionary<ushort, byte[]> _rootKeys = new();
-        private readonly ConcurrentDictionary<KeyId, byte[]> _dataKeys = new();
+        private readonly ConcurrentDictionary<KeyId, Lazy<DataKey>> _dataKeys = new();
         private readonly Lock _activeLock = new();
 
         public ContextKeys(RootKey activeRootKey)
@@ -213,18 +221,22 @@ internal sealed class DataKeyRing(IRootKeyProvider rootKeyProvider, EncryptionSe
             return true;
         }
 
-        public byte[] GetDataKey(KeyId keyId)
-            => _dataKeys.GetOrAdd(keyId, static (id, rootKeys) => HKDF.DeriveKey(
+        // Lazy: a data key created by a losing GetOrAdd race would never be disposed
+        public DataKey GetDataKey(KeyId keyId)
+            => _dataKeys.GetOrAdd(keyId, static (id, rootKeys) => new Lazy<DataKey>(() => new DataKey(HKDF.DeriveKey(
                     HashAlgorithmName.SHA256,
                     rootKeys[id.RootKeyId],
                     Envelope.KeySize,
-                    info: Encoding.UTF8.GetBytes($"efenc:dek:v{id.DataKeyVersion}")),
-                _rootKeys);
+                    info: Encoding.UTF8.GetBytes($"efenc:dek:v{id.DataKeyVersion}")))),
+                _rootKeys).Value;
 
         public void Clear()
         {
-            foreach (var key in _rootKeys.Values.Concat(_dataKeys.Values))
-                Array.Clear(key);
+            foreach (var key in _rootKeys.Values)
+                CryptographicOperations.ZeroMemory(key);
+
+            foreach (var key in _dataKeys.Values.Where(x => x.IsValueCreated))
+                key.Value.Dispose();
 
             _rootKeys.Clear();
             _dataKeys.Clear();

@@ -29,9 +29,13 @@ jobs:
       run: dotnet build --no-restore
       
     - name: Test
-      run: dotnet test --no-build --verbosity Normal /p:CollectCoverage=true /p:CoverletOutputFormat=opencover
+      run: dotnet test --no-build --coverage --coverage-output-format cobertura
       
+    # fails on breaking public API changes against PackageValidationBaselineVersion
+    - name: Validate packages
+      run: dotnet pack -c Release -o artifacts /p:Version=99.0.0-ci
+
     - name: Upload coverage reports to Codecov
-      uses: codecov/codecov-action@v4.0.1
+      uses: codecov/codecov-action@v7
       with:
         token: ${{ secrets.CODECOV_TOKEN }}

@@ -6,12 +6,14 @@
 
     <ItemGroup>
         <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+        <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" />
         <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
     </ItemGroup>
 
     <ItemGroup>
         <InternalsVisibleTo Include="EntityFrameworkCore.Encrypted.Tests.Postgres" />
         <InternalsVisibleTo Include="EntityFrameworkCore.Encrypted.Tests.AwsKms" />
+        <InternalsVisibleTo Include="EntityFrameworkCore.Encrypted.Tests.Sqlite" />
     </ItemGroup>
 
 </Project>

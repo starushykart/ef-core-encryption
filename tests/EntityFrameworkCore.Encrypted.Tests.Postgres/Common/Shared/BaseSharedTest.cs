@@ -4,7 +4,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Respawn;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Shared;
 
@@ -28,7 +27,7 @@ public abstract class BaseSharedTest(PostgresContainerFixture postgres, ITestOut
         });
     }
 
-    public virtual async Task InitializeAsync()
+    public virtual async ValueTask InitializeAsync()
     {
         var services = new ServiceCollection();
 
@@ -42,7 +41,7 @@ public abstract class BaseSharedTest(PostgresContainerFixture postgres, ITestOut
         await InitializeRespawner();
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         await _respawner.ResetAsync(_dbConnection);
         await _dbConnection.DisposeAsync();

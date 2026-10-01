@@ -7,7 +7,6 @@ using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.TestContext;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace EntityFrameworkCore.Encrypted.Tests.Postgres.ConfigScenarios;
 

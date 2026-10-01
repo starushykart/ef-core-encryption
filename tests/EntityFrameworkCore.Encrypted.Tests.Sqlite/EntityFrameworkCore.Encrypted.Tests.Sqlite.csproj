@@ -1,17 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <ItemGroup>
-        <PackageReference Include="Testcontainers.LocalStack" />
-        <PackageReference Include="xunit.v3" />
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
         <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
+        <PackageReference Include="xunit.v3" />
     </ItemGroup>
 
     <ItemGroup>
-        <Using Include="Xunit" />
-    </ItemGroup>
-
-    <ItemGroup>
-        <ProjectReference Include="..\..\src\EntityFrameworkCore.Encrypted.AwsKms\EntityFrameworkCore.Encrypted.AwsKms.csproj" />
+        <!-- shared test helpers: in-memory key wrapper, logging -->
         <ProjectReference Include="..\EntityFrameworkCore.Encrypted.Tests.Postgres\EntityFrameworkCore.Encrypted.Tests.Postgres.csproj" />
     </ItemGroup>
 

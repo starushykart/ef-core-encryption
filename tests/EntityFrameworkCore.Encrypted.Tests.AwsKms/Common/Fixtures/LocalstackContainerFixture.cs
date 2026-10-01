@@ -14,7 +14,7 @@ public class LocalstackContainerFixture : IAsyncLifetime
     public Guid TestKeyId { get; set; } = Guid.NewGuid();
     public string Url => _container.GetConnectionString();
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await _container.StartAsync();
         await _container.ExecAsync([
@@ -26,6 +26,6 @@ public class LocalstackContainerFixture : IAsyncLifetime
         ]);
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
         => await _container.DisposeAsync();
 }

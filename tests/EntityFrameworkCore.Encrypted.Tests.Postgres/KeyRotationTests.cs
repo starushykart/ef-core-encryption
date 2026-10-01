@@ -4,7 +4,7 @@ using EntityFrameworkCore.Encrypted.Common.Exceptions;
 using EntityFrameworkCore.Encrypted.Common.Keys;
 using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Keys;
 using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.TestContext;
-using FluentAssertions;
+using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;

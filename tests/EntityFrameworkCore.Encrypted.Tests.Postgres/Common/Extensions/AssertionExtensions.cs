@@ -1,5 +1,5 @@
 using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.TestContext;
-using FluentAssertions;
+using AwesomeAssertions;
 
 namespace EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Extensions;
 

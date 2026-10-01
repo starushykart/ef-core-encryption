@@ -7,7 +7,6 @@ using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.Fixtures;
 using EntityFrameworkCore.Encrypted.Tests.Postgres.Common.TestContext;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Xunit.Abstractions;
 using BaseTest = EntityFrameworkCore.Encrypted.Tests.AwsKms.Common.BaseTest;
 
 namespace EntityFrameworkCore.Encrypted.Tests.AwsKms.ConfigScenarios;

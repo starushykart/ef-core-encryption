@@ -1,5 +1,4 @@
 using System.Buffers.Binary;
-using System.Security.Cryptography;
 using EntityFrameworkCore.Encrypted.Common.Exceptions;
 
 namespace EntityFrameworkCore.Encrypted.Common.Crypto;
@@ -13,32 +12,48 @@ internal static class Envelope
 {
     public const byte FormatVersion = 1;
     public const int KeySize = 32;
+    public const int TagSize = 16;
 
     private const int HeaderSize = 7;
     private const int NonceSize = 12;
-    private const int TagSize = 16;
     private const int Overhead = HeaderSize + NonceSize + TagSize;
+    private const int MaxStackAssociatedData = 256;
 
-    public static byte[] Seal(ReadOnlySpan<byte> key, KeyId keyId, ReadOnlySpan<byte> label, ReadOnlySpan<byte> plaintext)
+    public static int GetLength(int plaintextLength)
+        => Overhead + plaintextLength;
+
+    /// <exception cref="EntityFrameworkEncryptionException">Too short to be an encrypted value.</exception>
+    public static int GetPlaintextLength(int envelopeLength)
+        => envelopeLength >= Overhead
+            ? envelopeLength - Overhead
+            : throw new EntityFrameworkEncryptionException("Encrypted value is corrupted or has an unsupported format");
+
+    /// <param name="envelope">Destination of <see cref="GetLength"/> bytes.</param>
+    public static void Seal(DataKey key, KeyId keyId, ReadOnlySpan<byte> label, ReadOnlySpan<byte> plaintext, Span<byte> envelope)
     {
-        var envelope = new byte[Overhead + plaintext.Length];
-        var span = envelope.AsSpan();
+        envelope[0] = FormatVersion;
+        BinaryPrimitives.WriteUInt16BigEndian(envelope[1..3], keyId.RootKeyId);
+        BinaryPrimitives.WriteUInt32BigEndian(envelope[3..HeaderSize], keyId.DataKeyVersion);
 
-        span[0] = FormatVersion;
-        BinaryPrimitives.WriteUInt16BigEndian(span[1..3], keyId.RootKeyId);
-        BinaryPrimitives.WriteUInt32BigEndian(span[3..HeaderSize], keyId.DataKeyVersion);
+        var nonce = envelope.Slice(HeaderSize, NonceSize);
+        System.Security.Cryptography.RandomNumberGenerator.Fill(nonce);
 
-        var nonce = span.Slice(HeaderSize, NonceSize);
-        RandomNumberGenerator.Fill(nonce);
+        var length = HeaderSize + label.Length;
+        Span<byte> associatedData = length <= MaxStackAssociatedData ? stackalloc byte[length] : new byte[length];
+        WriteAssociatedData(envelope[..HeaderSize], label, associatedData);
 
-        using var aes = new AesGcm(key, TagSize);
-        aes.Encrypt(
+        key.Cipher.Encrypt(
             nonce,
             plaintext,
-            span.Slice(HeaderSize + NonceSize, plaintext.Length),
-            span[^TagSize..],
-            AssociatedData(span[..HeaderSize], label));
+            envelope.Slice(HeaderSize + NonceSize, plaintext.Length),
+            envelope.Slice(HeaderSize + NonceSize + plaintext.Length, TagSize),
+            associatedData);
+    }
 
+    public static byte[] Seal(DataKey key, KeyId keyId, ReadOnlySpan<byte> label, ReadOnlySpan<byte> plaintext)
+    {
+        var envelope = new byte[GetLength(plaintext.Length)];
+        Seal(key, keyId, label, plaintext, envelope);
         return envelope;
     }
 
@@ -52,27 +67,32 @@ internal static class Envelope
             BinaryPrimitives.ReadUInt32BigEndian(envelope[3..HeaderSize]));
     }
 
-    /// <exception cref="AuthenticationTagMismatchException">Wrong key or label, or the value was tampered with.</exception>
-    public static byte[] Open(ReadOnlySpan<byte> key, ReadOnlySpan<byte> label, ReadOnlySpan<byte> envelope)
+    /// <param name="plaintext">Destination of <see cref="GetPlaintextLength"/> bytes.</param>
+    /// <exception cref="System.Security.Cryptography.AuthenticationTagMismatchException">Wrong key or label, or the value was tampered with.</exception>
+    public static void Open(DataKey key, ReadOnlySpan<byte> label, ReadOnlySpan<byte> envelope, Span<byte> plaintext)
     {
-        var plaintext = new byte[envelope.Length - Overhead];
+        var length = HeaderSize + label.Length;
+        Span<byte> associatedData = length <= MaxStackAssociatedData ? stackalloc byte[length] : new byte[length];
+        WriteAssociatedData(envelope[..HeaderSize], label, associatedData);
 
-        using var aes = new AesGcm(key, TagSize);
-        aes.Decrypt(
+        key.Cipher.Decrypt(
             envelope.Slice(HeaderSize, NonceSize),
             envelope.Slice(HeaderSize + NonceSize, plaintext.Length),
             envelope[^TagSize..],
             plaintext,
-            AssociatedData(envelope[..HeaderSize], label));
+            associatedData);
+    }
 
+    public static byte[] Open(DataKey key, ReadOnlySpan<byte> label, ReadOnlySpan<byte> envelope)
+    {
+        var plaintext = new byte[GetPlaintextLength(envelope.Length)];
+        Open(key, label, envelope, plaintext);
         return plaintext;
     }
 
-    private static byte[] AssociatedData(ReadOnlySpan<byte> header, ReadOnlySpan<byte> label)
+    private static void WriteAssociatedData(ReadOnlySpan<byte> header, ReadOnlySpan<byte> label, Span<byte> destination)
     {
-        var associatedData = new byte[header.Length + label.Length];
-        header.CopyTo(associatedData);
-        label.CopyTo(associatedData.AsSpan(header.Length));
-        return associatedData;
+        header.CopyTo(destination);
+        label.CopyTo(destination[header.Length..]);
     }
 }
