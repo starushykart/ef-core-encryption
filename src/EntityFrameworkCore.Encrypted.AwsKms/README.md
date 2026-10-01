@@ -21,4 +21,4 @@ Mark properties with `[Encrypted]` or `IsEncrypted()` and add a migration for th
 
 IAM permissions: `kms:GenerateDataKey` (first start and rotation), `kms:Decrypt`, and `kms:ReEncryptFrom` / `kms:ReEncryptTo` for moving to another key.
 
-Documentation: https://github.com/starushykart/ef-core-encryption
+Documentation: https://starushykart.github.io/ef-core-encryption
