@@ -194,10 +194,10 @@ public abstract class RelationalProviderTests(ITestOutputHelper helper) : IAsync
         await _provider.RotateRootKeyAsync<ProviderDbContext>();
 
         var changed = false;
-        await using var provider = Build(services => services.AddLogging(b => b.AddProvider(new CallbackLoggerProvider(message =>
+        await using var provider = Build(services => services.AddLogging(b => b.SetMinimumLevel(LogLevel.Debug).AddProvider(new CallbackLoggerProvider(message =>
         {
             // after the first batch: the application updates all rows, the scan still holds their previous values
-            if (changed || !message.StartsWith("Re-encrypted"))
+            if (changed || !message.Contains("batch written"))
                 return;
 
             changed = true;

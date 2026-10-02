@@ -1,4 +1,6 @@
 using System.Data.Common;
+using System.Diagnostics;
+using System.Globalization;
 using System.Text;
 using EntityFrameworkCore.Encrypted.Common.Crypto;
 using EntityFrameworkCore.Encrypted.Common.Diagnostics;
@@ -57,15 +59,20 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
             .ToList();
     }
 
-    public async Task<ReEncryptionResult> ReEncryptAsync(Type contextType, int batchSize, CancellationToken cancellationToken)
+    public async Task<ReEncryptionResult> ReEncryptAsync(Type contextType, MaintenanceOptions options, CancellationToken cancellationToken)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(batchSize, 1);
+        options.Validate();
 
-        using var activity = Telemetry.StartActivity("reencrypt", contextType)?.SetTag("batch_size", batchSize);
+        using var activity = Telemetry.StartActivity("reencrypt", contextType)?.SetTag("batch_size", options.BatchSize);
+        var watch = Stopwatch.StartNew();
 
         // encrypt with the latest root key, also when it was rotated by another instance
         await keyRing.InitializeAsync(contextType, cancellationToken);
         await keyRing.RefreshAsync(contextType, cancellationToken);
+
+        var target = keyRing.GetEncryptionKey(contextType).KeyId;
+        logger.LogInformation("Re-encrypting values of {Context} with root key {RootKeyId}, data key version {DataKeyVersion}, {BatchSize} values per batch",
+            contextType.Name, target.RootKeyId, target.DataKeyVersion, options.BatchSize);
 
         long reEncrypted = 0, skipped = 0, invalid = 0;
 
@@ -81,24 +88,27 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
                 continue;
             }
 
-            var pending = new List<Update>(batchSize);
+            var progress = new MaintenanceProgress(logger, "Re-encrypting", table.DisplayName, await CountAsync(context, table, cancellationToken));
+            var pending = new List<Update>(options.BatchSize);
             var active = keyRing.GetEncryptionKey(contextType).KeyId;
+            progress.Start();
 
             async ValueTask FlushAsync()
             {
                 var (updated, conflicts) = await ExecuteAsync(context, pending, cancellationToken);
-                reEncrypted += updated;
-                skipped += conflicts;
+                progress.Batch(updated, conflicts);
                 Telemetry.RecordReEncryption(contextType, "reencrypted", updated);
                 Telemetry.RecordReEncryption(contextType, "skipped", conflicts);
                 pending.Clear();
 
-                logger.LogInformation("Re-encrypted {Count} values so far, now in {Table}", reEncrypted, table.DisplayName);
                 active = keyRing.GetEncryptionKey(contextType).KeyId;
+                await DelayAsync(options, cancellationToken);
             }
 
             await ScanAsync(context, table, async (keys, values) =>
             {
+                progress.Row();
+
                 for (var i = 0; i < table.Columns.Count; i++)
                 {
                     if (values[i] is not { } value)
@@ -120,21 +130,30 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
                     }
                     else
                     {
-                        invalid++;
+                        progress.Invalid++;
                     }
 
-                    if (pending.Count >= batchSize)
+                    if (pending.Count >= options.BatchSize)
                         await FlushAsync();
                 }
             }, cancellationToken);
 
             if (pending.Count > 0)
                 await FlushAsync();
+
+            progress.Finish();
+            reEncrypted += progress.Updated;
+            skipped += progress.Skipped;
+            invalid += progress.Invalid;
         }
 
         if (invalid > 0)
             logger.LogWarning("{Count} values of {Context} can't be decrypted and were left as is: not encrypted, or their root key is missing",
                 invalid, contextType.Name);
+
+        logger.LogInformation(
+            "Re-encryption of {Context} finished in {Elapsed}: {ReEncrypted} values re-encrypted, {Skipped} changed by the application meanwhile, {Invalid} invalid",
+            contextType.Name, watch.Elapsed, reEncrypted, skipped, invalid);
 
         Telemetry.RecordReEncryption(contextType, "invalid", invalid);
         activity?.SetTag("reencrypted", reEncrypted).SetTag("skipped", skipped).SetTag("invalid", invalid);
@@ -142,13 +161,16 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
         return new ReEncryptionResult(reEncrypted, skipped, invalid);
     }
 
-    public async Task<long> RebuildBlindIndexesAsync(Type contextType, int batchSize, CancellationToken cancellationToken)
+    public async Task<long> RebuildBlindIndexesAsync(Type contextType, MaintenanceOptions options, CancellationToken cancellationToken)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(batchSize, 1);
+        options.Validate();
 
-        using var activity = Telemetry.StartActivity("blind_index.rebuild", contextType)?.SetTag("batch_size", batchSize);
+        using var activity = Telemetry.StartActivity("blind_index.rebuild", contextType)?.SetTag("batch_size", options.BatchSize);
+        var watch = Stopwatch.StartNew();
         await keyRing.InitializeAsync(contextType, cancellationToken);
         await keyRing.LoadIndexKeysAsync(contextType, cancellationToken);
+
+        logger.LogInformation("Rebuilding blind indexes of {Context}, {BatchSize} values per batch", contextType.Name, options.BatchSize);
 
         long rebuilt = 0;
 
@@ -164,17 +186,22 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
                 continue;
             }
 
-            var pending = new List<Update>(batchSize);
+            var progress = new MaintenanceProgress(logger, "Rebuilding blind indexes of", table.DisplayName, await CountAsync(context, table, cancellationToken));
+            var pending = new List<Update>(options.BatchSize);
+            progress.Start();
 
             async ValueTask FlushAsync()
             {
-                rebuilt += (await ExecuteAsync(context, pending, cancellationToken)).Updated;
+                var (updated, conflicts) = await ExecuteAsync(context, pending, cancellationToken);
+                progress.Batch(updated, conflicts);
                 pending.Clear();
-                logger.LogInformation("Rebuilt {Count} blind indexes so far, now in {Table}", rebuilt, table.DisplayName);
+                await DelayAsync(options, cancellationToken);
             }
 
             await ScanAsync(context, table, async (keys, values) =>
             {
+                progress.Row();
+
                 for (var i = 0; i < table.Columns.Count; i++)
                 {
                     var column = table.Columns[i];
@@ -188,23 +215,53 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
                         if (values[table.Columns.Count + i] != null)
                             pending.Add(new Update(table, index.Store, column.Store, keys, OldValue: null, NewValue: null));
                     }
-                    else if (TryComputeIndex(table, column, value) is { } hash
-                             && !(values[table.Columns.Count + i] is byte[] stored && stored.AsSpan().SequenceEqual(hash)))
+                    else if (TryComputeIndex(table, column, value) is { } hash)
                     {
-                        pending.Add(new Update(table, index.Store, column.Store, keys, value, hash));
+                        if (!(values[table.Columns.Count + i] is byte[] stored && stored.AsSpan().SequenceEqual(hash)))
+                            pending.Add(new Update(table, index.Store, column.Store, keys, value, hash));
+                    }
+                    else
+                    {
+                        progress.Invalid++;
                     }
 
-                    if (pending.Count >= batchSize)
+                    if (pending.Count >= options.BatchSize)
                         await FlushAsync();
                 }
             }, cancellationToken);
 
             if (pending.Count > 0)
                 await FlushAsync();
+
+            progress.Finish();
+            rebuilt += progress.Updated;
         }
 
+        logger.LogInformation("Rebuilding blind indexes of {Context} finished in {Elapsed}: {Rebuilt} updated", contextType.Name, watch.Elapsed, rebuilt);
         activity?.SetTag("rebuilt", rebuilt);
         return rebuilt;
+    }
+
+    private static Task DelayAsync(MaintenanceOptions options, CancellationToken cancellationToken)
+        => options.BatchDelay > TimeSpan.Zero ? Task.Delay(options.BatchDelay, cancellationToken) : Task.CompletedTask;
+
+    /// <summary>Rows the scan reads, for progress: counted before the scan, so only an estimate while the application writes.</summary>
+    private static async Task<long> CountAsync(DbContext context, EncryptedTable table, CancellationToken cancellationToken)
+    {
+        var sql = context.GetService<ISqlGenerationHelper>();
+        await context.Database.OpenConnectionAsync(cancellationToken);
+
+        try
+        {
+            await using var command = context.Database.GetDbConnection().CreateCommand();
+            command.CommandTimeout = context.Database.GetCommandTimeout() ?? command.CommandTimeout;
+            command.CommandText = $"SELECT COUNT(*) FROM {sql.DelimitIdentifier(table.Name, table.Schema)} WHERE {HasValues(sql, table)}";
+            return Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture);
+        }
+        finally
+        {
+            await context.Database.CloseConnectionAsync();
+        }
     }
 
     private byte[]? TryComputeIndex(EncryptedTable table, EncryptedColumn column, object value)
@@ -306,10 +363,7 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
         var columns = string.Join(", ", keys
             .Concat(table.Columns.Select(x => sql.DelimitIdentifier(x.Name)))
             .Concat(table.Columns.Select(x => x.Index is { } index ? sql.DelimitIdentifier(index.Store.Name) : "NULL")));
-        // blind indexes too: an index without a value is cleared by the rebuild
-        var notNull = $"({string.Join(" OR ", table.Columns
-            .SelectMany(x => x.Index is { } index ? [x.Name, index.Store.Name] : new[] { x.Name })
-            .Select(x => $"{sql.DelimitIdentifier(x)} IS NOT NULL"))})";
+        var notNull = HasValues(sql, table);
         var paged = keys.Count > 0;
         object[]? last = null;
 
@@ -421,6 +475,12 @@ internal sealed class EncryptedDataMaintenance(IServiceScopeFactory scopeFactory
             await transaction.CommitAsync(ct);
             return (updated, updates.Count(x => x.Counted) - updated);
         }, cancellationToken);
+
+    // rows with an encrypted value, or a blind index: an index without a value is cleared by the rebuild
+    private static string HasValues(ISqlGenerationHelper sql, EncryptedTable table)
+        => $"({string.Join(" OR ", table.Columns
+            .SelectMany(x => x.Index is { } index ? [x.Name, index.Store.Name] : new[] { x.Name })
+            .Select(x => $"{sql.DelimitIdentifier(x)} IS NOT NULL"))})";
 
     // the SQL standard (SQL Server, PostgreSQL, Oracle, Db2, Firebird), except providers that only support LIMIT
     private static string Limit(string? provider)
