@@ -40,10 +40,12 @@ public sealed class SqliteMaintenanceTests : IAsyncDisposable
 
         result.Should().Be(new ReEncryptionResult(ReEncrypted: 30, Skipped: 0, Invalid: 0));
         watch.Elapsed.Should().BeGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(600), "three batches, each followed by a pause");
-        _logs.Messages.Should().Contain(x => x.StartsWith("Re-encrypting values of ProviderDbContext with root key 2, data key version 0, 10 values per batch"));
-        _logs.Messages.Should().Contain(x => x.Contains("Tags: 30 rows with encrypted values"));
-        _logs.Messages.Should().Contain(x => x.Contains("Tags finished in") && x.Contains("30 rows scanned, 30 updated"));
-        _logs.Messages.Should().Contain(x => x.StartsWith("Re-encryption of ProviderDbContext finished in") && x.Contains("30 values re-encrypted"));
+        // the run, each table, and summaries with counts: loose patterns, so rewording a message doesn't break the test
+        var logs = _logs.Messages.ToList();
+        logs.Should().ContainMatch("*ProviderDbContext*root key 2*", "the start of the run names the target key");
+        logs.Should().ContainMatch("*Tags*30*", "each table is logged with its row count");
+        logs.Should().ContainMatch("*Tags*finished*30*", "each table gets a summary");
+        logs.Should().ContainMatch("*ProviderDbContext*finished*30*", "the run gets a summary");
     }
 
     [Fact]

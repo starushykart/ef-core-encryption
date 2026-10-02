@@ -197,7 +197,7 @@ public abstract class RelationalProviderTests(ITestOutputHelper helper) : IAsync
         await using var provider = Build(services => services.AddLogging(b => b.SetMinimumLevel(LogLevel.Debug).AddProvider(new CallbackLoggerProvider(message =>
         {
             // after the first batch: the application updates all rows, the scan still holds their previous values
-            if (changed || !message.Contains("batch written"))
+            if (changed || !System.Text.RegularExpressions.Regex.IsMatch(message, "batch.*written", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
                 return;
 
             changed = true;
