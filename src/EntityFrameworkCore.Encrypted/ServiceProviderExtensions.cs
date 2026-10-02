@@ -39,7 +39,17 @@ public static class ServiceProviderExtensions
     public static Task<long> RebuildBlindIndexesAsync<TContext>(
         this IServiceProvider serviceProvider, int batchSize = 1000, CancellationToken cancellationToken = default)
         where TContext : DbContext
-        => GetService<EncryptedDataMaintenance>(serviceProvider).RebuildBlindIndexesAsync(typeof(TContext), batchSize, cancellationToken);
+        => serviceProvider.RebuildBlindIndexesAsync<TContext>(new MaintenanceOptions { BatchSize = batchSize }, cancellationToken);
+
+    /// <inheritdoc cref="RebuildBlindIndexesAsync{TContext}(IServiceProvider, int, CancellationToken)"/>
+    /// <param name="options">Batch size and the pause between batches.</param>
+    public static Task<long> RebuildBlindIndexesAsync<TContext>(
+        this IServiceProvider serviceProvider, MaintenanceOptions options, CancellationToken cancellationToken = default)
+        where TContext : DbContext
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return GetService<EncryptedDataMaintenance>(serviceProvider).RebuildBlindIndexesAsync(typeof(TContext), options, cancellationToken);
+    }
 
     /// <summary>
     /// Creates a new root key of <typeparamref name="TContext"/> that encrypts new values from now on.
@@ -77,7 +87,17 @@ public static class ServiceProviderExtensions
     public static Task<ReEncryptionResult> ReEncryptAsync<TContext>(
         this IServiceProvider serviceProvider, int batchSize = 1000, CancellationToken cancellationToken = default)
         where TContext : DbContext
-        => GetService<EncryptedDataMaintenance>(serviceProvider).ReEncryptAsync(typeof(TContext), batchSize, cancellationToken);
+        => serviceProvider.ReEncryptAsync<TContext>(new MaintenanceOptions { BatchSize = batchSize }, cancellationToken);
+
+    /// <inheritdoc cref="ReEncryptAsync{TContext}(IServiceProvider, int, CancellationToken)"/>
+    /// <param name="options">Batch size and the pause between batches.</param>
+    public static Task<ReEncryptionResult> ReEncryptAsync<TContext>(
+        this IServiceProvider serviceProvider, MaintenanceOptions options, CancellationToken cancellationToken = default)
+        where TContext : DbContext
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return GetService<EncryptedDataMaintenance>(serviceProvider).ReEncryptAsync(typeof(TContext), options, cancellationToken);
+    }
 
     private static T GetService<T>(IServiceProvider serviceProvider) where T : notnull
         => serviceProvider.GetService<T>()

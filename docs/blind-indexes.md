@@ -98,7 +98,7 @@ When you add a blind index to a column that already has values, existing rows ge
 long updated = await app.Services.RebuildBlindIndexesAsync<AppDbContext>();
 ```
 
-It works like [re-encryption](key-management#re-encrypting-existing-values). It runs in batches, it's safe while the app is running, and it can be stopped and restarted. It only writes rows whose index is missing or out of date, and clears indexes left behind on rows whose value is now `NULL` (for example, set with SQL).
+It works like [re-encryption](key-management#re-encrypting-existing-values), with the same [options to control the load](key-management#controlling-the-load) and progress logs. It runs in batches, it's safe while the app is running, and it can be stopped and restarted. It only writes rows whose index is missing or out of date, and clears indexes left behind on rows whose value is now `NULL` (for example, set with SQL).
 
 Run it again whenever you change the normalization function, since existing rows were hashed with the old one.
 

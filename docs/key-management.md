@@ -130,8 +130,35 @@ It's designed to run while your app is serving traffic:
 - **Bad values are left alone.** Anything that can't be decrypted is counted as invalid and left untouched.
 - **Old data is migrated too.** With a [legacy decryptor](migrating), values written by your previous code (or plaintext) are re-encrypted into the library's format.
 - **Transient errors are retried**, using your context's execution strategy.
-
 - **It doesn't hold long locks.** Tables are read in pages of 1,000 rows by primary key, and each page is read completely before anything is written.
+
+### Controlling the load
+
+It reads every row that has an encrypted value, also on later runs, and runs batch after batch as fast as the database allows. On a large table that keeps the database busy until it's done. To spread the load, use smaller batches and a pause after each one:
+
+```csharp
+await app.Services.ReEncryptAsync<AppDbContext>(new MaintenanceOptions
+{
+    BatchSize = 500,
+    BatchDelay = TimeSpan.FromMilliseconds(200)
+});
+```
+
+Pass a `CancellationToken` to stop it, for example when peak hours start. Committed batches stay committed, and the next run continues where it matters: values that already use the current key are skipped. `RebuildBlindIndexesAsync` takes the same options.
+
+### Following progress
+
+It logs at `Information` level under `EntityFrameworkCore.Encrypted`: when it starts, when it starts and finishes each table, progress at most every 10 seconds, and a summary at the end:
+
+```
+Re-encrypting values of AppDbContext with root key 2, data key version 0, 500 values per batch
+Re-encrypting Customers: 1200000 rows with encrypted values
+Re-encrypting Customers: 412000 of 1200000 rows scanned (34%), 405210 updated so far
+Re-encrypting Customers finished in 00:21:13: 1200000 rows scanned, 1180334 updated, 12 changed by the application meanwhile, 0 invalid
+Re-encryption of AppDbContext finished in 00:24:02: 1301455 values re-encrypted, 12 changed by the application meanwhile, 0 invalid
+```
+
+At `Debug` level, every batch is logged too. Values that can't be decrypted are logged as a warning with their count, and at `Debug` level one by one with the reason. The `efcore.encryption.reencryption.values` metric and the `reencrypt` trace are described in [Observability](observability).
 
 ## Retiring an old key
 

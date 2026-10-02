@@ -90,4 +90,4 @@ In ASP.NET Core, add `AddAspNetCoreInstrumentation()` as well. Without it, activ
 
 ## Logging
 
-Key loads, rotations, rewrapping and re-encryption progress are logged through the regular `ILogger`, under categories starting with `EntityFrameworkCore.Encrypted`. Values and keys are never logged.
+Key loads, rotations, rewrapping, and the start, progress and summary of re-encryption and blind index rebuilds are logged through the regular `ILogger`, under categories starting with `EntityFrameworkCore.Encrypted`. Values and keys are never logged.
