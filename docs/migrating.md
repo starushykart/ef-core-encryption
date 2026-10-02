@@ -118,6 +118,8 @@ Mark the properties as encrypted, deploy, and run `ReEncryptAsync`. The plaintex
    ```
 
    It works in batches and is safe to run while the app is serving traffic. If the app updates a row in the meantime, the app's write wins. You can stop it and start it again. If a column has a blind index, its index is filled for every migrated value too.
+
+   On a large table, use smaller batches and a pause between them to keep the load down, and follow its progress in the logs. See [controlling the load](key-management#controlling-the-load) and [following progress](key-management#following-progress).
 5. **Check that nothing is left:**
 
    ```csharp
