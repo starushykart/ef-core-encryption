@@ -41,12 +41,12 @@
         <PackageVersion Include="Bogus" Version="35.6.5" />
         <!-- Apache-2.0 licensed fork of FluentAssertions -->
         <PackageVersion Include="AwesomeAssertions" Version="9.6.0" />
-        <PackageVersion Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.11.2" />
+        <PackageVersion Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.12.0" />
         <PackageVersion Include="MartinCostello.Logging.XUnit.v3" Version="0.7.1" />
         <PackageVersion Include="Respawn" Version="7.0.0" />
-        <PackageVersion Include="Testcontainers.LocalStack" Version="4.15.0" />
-        <PackageVersion Include="Testcontainers.MsSql" Version="4.15.0" />
-        <PackageVersion Include="Testcontainers.PostgreSql" Version="4.15.0" />
-        <PackageVersion Include="xunit.v3" Version="4.0.1" />
+        <PackageVersion Include="Testcontainers.LocalStack" Version="4.16.0" />
+        <PackageVersion Include="Testcontainers.MsSql" Version="4.16.0" />
+        <PackageVersion Include="Testcontainers.PostgreSql" Version="4.16.0" />
+        <PackageVersion Include="xunit.v3" Version="4.0.2" />
     </ItemGroup>
 </Project>
