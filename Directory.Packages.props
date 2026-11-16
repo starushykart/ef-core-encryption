@@ -22,7 +22,7 @@
 
     <ItemGroup Label="Microsoft.Extensions">
         <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.12" />
-        <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
+        <PackageVersion Include="Microsoft.Extensions.Hosting" Version="11.0.0" />
         <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.12" />
     </ItemGroup>
 
@@ -31,7 +31,7 @@
     </ItemGroup>
 
     <ItemGroup Label="Samples">
-        <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
+        <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.15" />
         <PackageVersion Include="OpenTelemetry.Exporter.Console" Version="1.19.1" />
         <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.19.1" />
         <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.19.0" />
