@@ -7,12 +7,12 @@
     <ItemGroup Label="EF Core">
         <!-- not referenced directly: pins the version brought transitively by Relational and Npgsql -->
         <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.12" />
-        <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12" />
+        <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.15" />
         <!-- pinned so Npgsql does not bring an older Relational version transitively -->
         <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.12" />
         <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
-        <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
-        <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.12" />
+        <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.15" />
+        <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.15" />
     </ItemGroup>
 
     <ItemGroup Label="AWS">
